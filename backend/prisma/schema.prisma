@@ -1,0 +1,288 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  ADMIN
+  COACH
+}
+
+enum TennisLevel {
+  BEGINNER
+  BEGINNER_PLUS
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum CourtStatus {
+  ACTIVE
+  MAINTENANCE
+  CLOSED
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+enum ReservationType {
+  SOLO_PRACTICE
+  WITH_PARTNER
+  LOOKING_FOR_PARTNER
+  LESSON
+  CLUB_EVENT
+}
+
+enum LessonLevel {
+  BEGINNER
+  BEGINNER_PLUS
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum LessonApplicationStatus {
+  PENDING
+  ACCEPTED
+  WAITLISTED
+  REJECTED
+  CANCELLED
+}
+
+enum MatchPostStatus {
+  OPEN
+  MATCHED
+  CANCELLED
+  COMPLETED
+}
+
+enum MatchRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum AnnouncementTarget {
+  ALL_USERS
+  STUDENTS
+  ADMINS
+  LESSON_PARTICIPANTS
+}
+
+model User {
+  id             Int          @id @default(autoincrement())
+  fullName       String
+  email          String       @unique
+  password       String
+  role           UserRole     @default(STUDENT)
+  tennisLevel    TennisLevel  @default(BEGINNER)
+  hasRacket      Boolean      @default(false)
+  bio            String?
+  isActive       Boolean      @default(true)
+
+  reservations   Reservation[]
+  lessonApps     LessonApplication[]
+  matchPosts     MatchPost[]
+  matchRequests  MatchRequest[]
+  sentMessages   Message[]    @relation("SentMessages")
+  announcements  Announcement[] @relation("CreatedAnnouncements")
+  attendance     AttendanceRecord[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Court {
+  id            Int          @id @default(autoincrement())
+  name          String
+  description   String?
+  location      String?
+  status        CourtStatus  @default(ACTIVE)
+
+  reservations  Reservation[]
+  lessons       Lesson[]
+  matchPosts    MatchPost[]
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Reservation {
+  id              Int                @id @default(autoincrement())
+
+  courtId         Int
+  court           Court              @relation(fields: [courtId], references: [id])
+
+  userId          Int
+  user            User               @relation(fields: [userId], references: [id])
+
+  startTime       DateTime
+  endTime         DateTime
+
+  type            ReservationType    @default(WITH_PARTNER)
+  status          ReservationStatus  @default(CONFIRMED)
+
+  note            String?
+
+  matchPost       MatchPost?
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([courtId, startTime, endTime])
+  @@index([userId])
+}
+
+model Lesson {
+  id              Int          @id @default(autoincrement())
+
+  title           String
+  description     String?
+  level           LessonLevel  @default(BEGINNER)
+
+  courtId         Int
+  court           Court        @relation(fields: [courtId], references: [id])
+
+  startTime       DateTime
+  endTime         DateTime
+
+  capacity        Int
+  isActive        Boolean      @default(true)
+
+  applications    LessonApplication[]
+  attendance      AttendanceRecord[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([courtId, startTime, endTime])
+}
+
+model LessonApplication {
+  id              Int                       @id @default(autoincrement())
+
+  lessonId        Int
+  lesson          Lesson                    @relation(fields: [lessonId], references: [id])
+
+  userId          Int
+  user            User                      @relation(fields: [userId], references: [id])
+
+  status          LessonApplicationStatus   @default(PENDING)
+  note            String?
+
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@unique([lessonId, userId])
+  @@index([userId])
+}
+
+model MatchPost {
+  id              Int              @id @default(autoincrement())
+
+  creatorId       Int
+  creator         User             @relation(fields: [creatorId], references: [id])
+
+  courtId         Int
+  court           Court            @relation(fields: [courtId], references: [id])
+
+  reservationId   Int?             @unique
+  reservation     Reservation?     @relation(fields: [reservationId], references: [id])
+
+  title           String
+  description     String?
+  preferredLevel  TennisLevel      @default(BEGINNER)
+
+  startTime       DateTime
+  endTime         DateTime
+
+  status          MatchPostStatus  @default(OPEN)
+
+  requests        MatchRequest[]
+  messages        Message[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([creatorId])
+  @@index([courtId, startTime, endTime])
+}
+
+model MatchRequest {
+  id              Int                 @id @default(autoincrement())
+
+  matchPostId     Int
+  matchPost       MatchPost           @relation(fields: [matchPostId], references: [id])
+
+  requesterId     Int
+  requester       User                @relation(fields: [requesterId], references: [id])
+
+  status          MatchRequestStatus  @default(PENDING)
+  note            String?
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([matchPostId, requesterId])
+  @@index([requesterId])
+}
+
+model Message {
+  id              Int          @id @default(autoincrement())
+
+  matchPostId     Int
+  matchPost       MatchPost    @relation(fields: [matchPostId], references: [id])
+
+  senderId        Int
+  sender          User         @relation("SentMessages", fields: [senderId], references: [id])
+
+  content         String
+  isRead          Boolean      @default(false)
+
+  createdAt       DateTime     @default(now())
+
+  @@index([matchPostId])
+  @@index([senderId])
+}
+
+model Announcement {
+  id              Int                 @id @default(autoincrement())
+
+  title           String
+  content         String
+  target          AnnouncementTarget  @default(ALL_USERS)
+  isPublished     Boolean             @default(true)
+
+  createdById     Int
+  createdBy       User                @relation("CreatedAnnouncements", fields: [createdById], references: [id])
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model AttendanceRecord {
+  id              Int       @id @default(autoincrement())
+
+  lessonId        Int
+  lesson          Lesson    @relation(fields: [lessonId], references: [id])
+
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id])
+
+  isPresent       Boolean   @default(false)
+  note            String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([lessonId, userId])
+}
