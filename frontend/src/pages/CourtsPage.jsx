@@ -22,28 +22,64 @@ const CourtsPage = () => {
 
   return (
     <section className="page">
-      <div className="page-header">
+      <div className="section-card page-banner">
         <div>
-          <p className="eyebrow">Campus courts</p>
-          <h1>Courts</h1>
-          <p>View available tennis courts on campus.</p>
+          <p className="eyebrow">Campus facilities</p>
+          <h2>Our courts</h2>
+          <p>
+            View each registered court area, check its status and understand how
+            it can be used within the platform.
+          </p>
+        </div>
+
+        <div className="banner-metric">
+          <span>Total courts</span>
+          <strong>{courts.length}</strong>
         </div>
       </div>
 
       {loading ? (
         <div className="page-message">Loading courts...</div>
+      ) : courts.length === 0 ? (
+        <div className="section-card empty-state">
+          <h3>No courts found</h3>
+          <p>Courts will appear here once they are added by the admin.</p>
+        </div>
       ) : (
         <div className="card-grid">
           {courts.map((court) => (
-            <div key={court.id} className="section-card">
+            <div key={court.id} className="section-card premium-card">
               <div className="card-top">
-                <h2>{court.name}</h2>
+                <div>
+                  <p className="mini-eyebrow">Court #{court.id}</p>
+                  <h2>{court.name}</h2>
+                </div>
+
                 <span className={`badge ${court.status.toLowerCase()}`}>
                   {court.status}
                 </span>
               </div>
-              <p>{court.description}</p>
-              <small>{court.location}</small>
+
+              <p className="card-description">{court.description}</p>
+
+              <div className="details-box">
+                <div className="detail-row">
+                  <span>Location</span>
+                  <strong>{court.location || "Not specified"}</strong>
+                </div>
+                <div className="detail-row">
+                  <span>Status</span>
+                  <strong>{court.status}</strong>
+                </div>
+                <div className="detail-row">
+                  <span>Usage</span>
+                  <strong>
+                    {court.status === "ACTIVE"
+                      ? "Available for reservations"
+                      : "Currently restricted"}
+                  </strong>
+                </div>
+              </div>
             </div>
           ))}
         </div>

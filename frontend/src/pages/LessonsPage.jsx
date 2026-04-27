@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
 
 const LessonsPage = () => {
   const [lessons, setLessons] = useState([]);
   const [myApplications, setMyApplications] = useState([]);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState({
+    type: "",
+    text: ""
+  });
+  const [selectedLevel, setSelectedLevel] = useState("ALL");
 
   const loadData = async () => {
     try {
@@ -24,22 +28,58 @@ const LessonsPage = () => {
     loadData();
   }, []);
 
-  const hasApplied = (lessonId) => {
-    return myApplications.some((application) => application.lessonId === lessonId);
+  const filteredLessons = useMemo(() => {
+    if (selectedLevel === "ALL") {
+      return lessons;
+    }
+
+    return lessons.filter((lesson) => lesson.level === selectedLevel);
+  }, [lessons, selectedLevel]);
+
+  const getApplicationForLesson = (lessonId) => {
+    return myApplications.find((application) => application.lessonId === lessonId);
+  };
+
+  const getAcceptedCount = (lesson) => {
+    return lesson.applications.filter(
+      (application) => application.status === "ACCEPTED"
+    ).length;
+  };
+
+  const getApplicationCount = (lesson) => {
+    return lesson.applications.length;
+  };
+
+  const getCapacityPercentage = (lesson) => {
+    if (!lesson.capacity) {
+      return 0;
+    }
+
+    return Math.min((getAcceptedCount(lesson) / lesson.capacity) * 100, 100);
   };
 
   const handleApply = async (lessonId) => {
     try {
-      setMessage("");
+      setMessage({
+        type: "",
+        text: ""
+      });
 
       await api.post(`/lessons/${lessonId}/apply`, {
         note: "I would like to join this tennis lesson."
       });
 
-      setMessage("Application sent successfully.");
+      setMessage({
+        type: "success",
+        text: "Application sent successfully. You can track its status below."
+      });
+
       await loadData();
     } catch (error) {
-      setMessage(error.response?.data?.message || "Application failed.");
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Application failed."
+      });
     }
   };
 
@@ -52,46 +92,165 @@ const LessonsPage = () => {
 
   return (
     <section className="page">
-      <div className="page-header">
+      <div className="section-card page-banner">
         <div>
-          <p className="eyebrow">Beginner friendly</p>
-          <h1>Lessons</h1>
-          <p>View tennis lessons and apply for available sessions.</p>
+          <p className="eyebrow">Beginner friendly learning</p>
+          <h2>Lessons designed for campus tennis</h2>
+          <p>
+            Explore available tennis lessons, apply with one click and follow
+            your application status without losing track of announcements or
+            capacity updates.
+          </p>
+        </div>
+
+        <div className="banner-metric">
+          <span>My applications</span>
+          <strong>{myApplications.length}</strong>
         </div>
       </div>
 
-      {message && <div className="alert">{message}</div>}
+      {message.text && (
+        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
+          {message.text}
+        </div>
+      )}
 
-      <div className="card-grid">
-        {lessons.map((lesson) => (
-          <div key={lesson.id} className="section-card">
-            <div className="card-top">
-              <h2>{lesson.title}</h2>
-              <span className="badge">{lesson.level}</span>
-            </div>
+      <div className="section-card lesson-toolbar">
+        <div>
+          <p className="eyebrow">Filter</p>
+          <h2>Find the right level</h2>
+        </div>
 
-            <p>{lesson.description}</p>
-            <small>{lesson.court.name}</small>
-            <small>{formatDate(lesson.startTime)}</small>
-            <small>
-              Applications: {lesson.applications.length} / {lesson.capacity}
-            </small>
-
-            <button
-              disabled={hasApplied(lesson.id)}
-              onClick={() => handleApply(lesson.id)}
-            >
-              {hasApplied(lesson.id) ? "Applied" : "Apply"}
-            </button>
-          </div>
-        ))}
+        <div className="segmented-control">
+          <button
+            className={selectedLevel === "ALL" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("ALL")}
+          >
+            All
+          </button>
+          <button
+            className={selectedLevel === "BEGINNER" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("BEGINNER")}
+          >
+            Beginner
+          </button>
+          <button
+            className={selectedLevel === "BEGINNER_PLUS" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("BEGINNER_PLUS")}
+          >
+            Beginner+
+          </button>
+          <button
+            className={selectedLevel === "INTERMEDIATE" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("INTERMEDIATE")}
+          >
+            Intermediate
+          </button>
+          <button
+            className={selectedLevel === "ADVANCED" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("ADVANCED")}
+          >
+            Advanced
+          </button>
+        </div>
       </div>
 
+      {filteredLessons.length === 0 ? (
+        <div className="section-card empty-state">
+          <h3>No lessons found</h3>
+          <p>
+            There are no active lessons for this filter yet. New sessions will
+            appear here when admins create them.
+          </p>
+        </div>
+      ) : (
+        <div className="card-grid">
+          {filteredLessons.map((lesson) => {
+            const myApplication = getApplicationForLesson(lesson.id);
+            const acceptedCount = getAcceptedCount(lesson);
+            const totalApplications = getApplicationCount(lesson);
+            const percentage = getCapacityPercentage(lesson);
+            const isFull = acceptedCount >= lesson.capacity;
+
+            return (
+              <div key={lesson.id} className="section-card premium-card">
+                <div className="card-top">
+                  <div>
+                    <p className="mini-eyebrow">Lesson #{lesson.id}</p>
+                    <h2>{lesson.title}</h2>
+                  </div>
+
+                  <span className="badge">{lesson.level}</span>
+                </div>
+
+                <p className="card-description">{lesson.description}</p>
+
+                <div className="lesson-info-grid">
+                  <div>
+                    <span>Court</span>
+                    <strong>{lesson.court.name}</strong>
+                  </div>
+                  <div>
+                    <span>Date</span>
+                    <strong>{formatDate(lesson.startTime)}</strong>
+                  </div>
+                  <div>
+                    <span>Accepted</span>
+                    <strong>
+                      {acceptedCount} / {lesson.capacity}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Total applications</span>
+                    <strong>{totalApplications}</strong>
+                  </div>
+                </div>
+
+                <div className="capacity-block">
+                  <div className="capacity-header">
+                    <span>Capacity usage</span>
+                    <strong>{Math.round(percentage)}%</strong>
+                  </div>
+                  <div className="capacity-track">
+                    <div
+                      className="capacity-fill"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+
+                {myApplication ? (
+                  <div className="status-panel">
+                    <span>Your application status</span>
+                    <strong>{myApplication.status}</strong>
+                  </div>
+                ) : (
+                  <button disabled={isFull} onClick={() => handleApply(lesson.id)}>
+                    {isFull ? "Lesson full" : "Apply to lesson"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="section-card">
-        <h2>My lesson applications</h2>
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Tracking</p>
+            <h2>My lesson applications</h2>
+          </div>
+        </div>
 
         {myApplications.length === 0 ? (
-          <p className="muted">No lesson applications yet.</p>
+          <div className="empty-state compact-empty">
+            <h3>No applications yet</h3>
+            <p>
+              When you apply to a lesson, your status will appear here as
+              pending, accepted, waitlisted or rejected.
+            </p>
+          </div>
         ) : (
           <div className="list">
             {myApplications.map((application) => (
@@ -99,8 +258,15 @@ const LessonsPage = () => {
                 <div>
                   <h3>{application.lesson.title}</h3>
                   <p>{application.lesson.court.name}</p>
+                  <small>{formatDate(application.lesson.startTime)}</small>
                 </div>
-                <span className="badge">{application.status}</span>
+
+                <div className="reservation-meta">
+                  <span className={`badge ${application.status.toLowerCase()}`}>
+                    {application.status}
+                  </span>
+                  <small>{application.lesson.level}</small>
+                </div>
               </div>
             ))}
           </div>

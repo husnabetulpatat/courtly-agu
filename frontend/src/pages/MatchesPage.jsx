@@ -1,18 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
+import { useAuth } from "../context/AuthContext";
+
+const getTomorrowDateValue = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date.toISOString().split("T")[0];
+};
 
 const MatchesPage = () => {
+  const { user } = useAuth();
+
   const [courts, setCourts] = useState([]);
   const [matches, setMatches] = useState([]);
   const [myMatches, setMyMatches] = useState([]);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState({
+    type: "",
+    text: ""
+  });
+  const [selectedLevel, setSelectedLevel] = useState("ALL");
 
   const [formData, setFormData] = useState({
     courtId: "",
     title: "",
     description: "",
     preferredLevel: "BEGINNER",
-    date: "",
+    date: getTomorrowDateValue(),
     startHour: "17:00",
     duration: "60"
   });
@@ -48,11 +61,40 @@ const MatchesPage = () => {
     loadData();
   }, []);
 
+  const filteredMatches = useMemo(() => {
+    const futureOpenMatches = matches.filter((match) => {
+      return new Date(match.startTime) > new Date();
+    });
+
+    if (selectedLevel === "ALL") {
+      return futureOpenMatches;
+    }
+
+    return futureOpenMatches.filter(
+      (match) => match.preferredLevel === selectedLevel
+    );
+  }, [matches, selectedLevel]);
+
+  const hasRequested = (match) => {
+    return match.requests.some((request) => request.requesterId === user?.id);
+  };
+
   const handleCreate = async (event) => {
     event.preventDefault();
 
     try {
-      setMessage("");
+      setMessage({
+        type: "",
+        text: ""
+      });
+
+      if (!formData.date || !formData.title.trim()) {
+        setMessage({
+          type: "error",
+          text: "Please enter a title and select a date."
+        });
+        return;
+      }
 
       const startTime = new Date(`${formData.date}T${formData.startHour}:00`);
       const endTime = new Date(
@@ -68,40 +110,73 @@ const MatchesPage = () => {
         endTime: endTime.toISOString()
       });
 
-      setMessage("Match post created successfully.");
+      setMessage({
+        type: "success",
+        text: "Match post created successfully. Students can now request to join."
+      });
+
+      setFormData((current) => ({
+        ...current,
+        title: "",
+        description: ""
+      }));
+
       await loadData();
     } catch (error) {
-      setMessage(error.response?.data?.message || "Match post failed.");
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Match post failed."
+      });
     }
   };
 
   const handleJoinRequest = async (matchId) => {
     try {
-      setMessage("");
+      setMessage({
+        type: "",
+        text: ""
+      });
 
       await api.post(`/matches/${matchId}/requests`, {
         note: "I would like to join this match."
       });
 
-      setMessage("Join request sent successfully.");
+      setMessage({
+        type: "success",
+        text: "Join request sent successfully."
+      });
+
       await loadData();
     } catch (error) {
-      setMessage(error.response?.data?.message || "Request failed.");
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Request failed."
+      });
     }
   };
 
   const handleRequestStatus = async (requestId, status) => {
     try {
-      setMessage("");
+      setMessage({
+        type: "",
+        text: ""
+      });
 
       await api.patch(`/matches/requests/${requestId}/status`, {
         status
       });
 
-      setMessage("Request updated successfully.");
+      setMessage({
+        type: "success",
+        text: `Request ${status.toLowerCase()} successfully.`
+      });
+
       await loadData();
     } catch (error) {
-      setMessage(error.response?.data?.message || "Update failed.");
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Update failed."
+      });
     }
   };
 
@@ -114,19 +189,36 @@ const MatchesPage = () => {
 
   return (
     <section className="page">
-      <div className="page-header">
+      <div className="section-card page-banner">
         <div>
-          <p className="eyebrow">Find your partner</p>
-          <h1>Matches</h1>
-          <p>Create match posts and find students at your tennis level.</p>
+          <p className="eyebrow">Social tennis layer</p>
+          <h2>Find the right player, not just an empty court</h2>
+          <p>
+            Create match posts, receive requests and approve players only when
+            both the time and profile feel right.
+          </p>
+        </div>
+
+        <div className="banner-metric">
+          <span>Open matches</span>
+          <strong>{filteredMatches.length}</strong>
         </div>
       </div>
 
-      {message && <div className="alert">{message}</div>}
+      {message.text && (
+        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
+          {message.text}
+        </div>
+      )}
 
       <div className="two-column">
-        <form onSubmit={handleCreate} className="section-card form">
-          <h2>Create match post</h2>
+        <form onSubmit={handleCreate} className="section-card form premium-form-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Create</p>
+              <h2>New match post</h2>
+            </div>
+          </div>
 
           <label>Court</label>
           <select
@@ -143,13 +235,14 @@ const MatchesPage = () => {
           <label>Title</label>
           <input
             value={formData.title}
-            placeholder="Looking for beginner partner"
+            placeholder="Looking for a beginner-friendly partner"
             onChange={(event) => updateField("title", event.target.value)}
           />
 
           <label>Description</label>
           <textarea
             value={formData.description}
+            placeholder="Tell others your level, style and what kind of session you want."
             onChange={(event) => updateField("description", event.target.value)}
           />
 
@@ -166,19 +259,26 @@ const MatchesPage = () => {
             <option value="ADVANCED">Advanced</option>
           </select>
 
-          <label>Date</label>
-          <input
-            type="date"
-            value={formData.date}
-            onChange={(event) => updateField("date", event.target.value)}
-          />
+          <div className="inline-form-row">
+            <div>
+              <label>Date</label>
+              <input
+                type="date"
+                min={getTomorrowDateValue()}
+                value={formData.date}
+                onChange={(event) => updateField("date", event.target.value)}
+              />
+            </div>
 
-          <label>Start hour</label>
-          <input
-            type="time"
-            value={formData.startHour}
-            onChange={(event) => updateField("startHour", event.target.value)}
-          />
+            <div>
+              <label>Start hour</label>
+              <input
+                type="time"
+                value={formData.startHour}
+                onChange={(event) => updateField("startHour", event.target.value)}
+              />
+            </div>
+          </div>
 
           <label>Duration</label>
           <select
@@ -191,36 +291,67 @@ const MatchesPage = () => {
             <option value="120">120 minutes</option>
           </select>
 
-          <button type="submit">Create match</button>
+          <p className="helper-text">
+            Creating a match post also reserves the selected court time for you.
+            Once you accept a request, the match becomes confirmed.
+          </p>
+
+          <button type="submit">Create match post</button>
         </form>
 
         <div className="section-card">
-          <h2>My match posts</h2>
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Yours</p>
+              <h2>My match posts</h2>
+            </div>
+          </div>
 
           {myMatches.length === 0 ? (
-            <p className="muted">No match posts yet.</p>
+            <div className="empty-state compact-empty">
+              <h3>No match posts yet</h3>
+              <p>Your created match posts and incoming requests will appear here.</p>
+            </div>
           ) : (
             <div className="list">
               {myMatches.map((match) => (
                 <div key={match.id} className="list-item">
                   <div className="card-top">
-                    <h3>{match.title}</h3>
-                    <span className="badge">{match.status}</span>
+                    <div>
+                      <h3>{match.title}</h3>
+                      <p>{match.court.name}</p>
+                    </div>
+                    <span className={`badge ${match.status.toLowerCase()}`}>
+                      {match.status}
+                    </span>
                   </div>
 
-                  <p>{match.court.name}</p>
                   <small>{formatDate(match.startTime)}</small>
 
-                  {match.requests.length > 0 && (
+                  {match.requests.length === 0 ? (
+                    <div className="tiny-empty">
+                      No requests yet. This post is visible to other students.
+                    </div>
+                  ) : (
                     <div className="request-box">
-                      <strong>Requests</strong>
+                      <strong>Incoming requests</strong>
+
                       {match.requests.map((request) => (
-                        <div key={request.id} className="request-row">
-                          <span>
-                            {request.requester.fullName} -{" "}
-                            {request.requester.tennisLevel}
+                        <div key={request.id} className="request-row premium-request-row">
+                          <div>
+                            <strong>{request.requester.fullName}</strong>
+                            <small>
+                              {request.requester.tennisLevel} /{" "}
+                              {request.requester.hasRacket
+                                ? "Has racket"
+                                : "Needs racket"}
+                            </small>
+                            {request.note && <p>{request.note}</p>}
+                          </div>
+
+                          <span className={`badge ${request.status.toLowerCase()}`}>
+                            {request.status}
                           </span>
-                          <span>{request.status}</span>
 
                           {request.status === "PENDING" && (
                             <div className="button-row">
@@ -252,35 +383,123 @@ const MatchesPage = () => {
         </div>
       </div>
 
-      <div className="section-card">
-        <h2>Open match posts</h2>
+      <div className="section-card lesson-toolbar">
+        <div>
+          <p className="eyebrow">Discover</p>
+          <h2>Open match posts</h2>
+        </div>
 
-        {matches.length === 0 ? (
-          <p className="muted">No open matches yet.</p>
-        ) : (
-          <div className="card-grid">
-            {matches.map((match) => (
-              <div key={match.id} className="mini-card">
+        <div className="segmented-control">
+          <button
+            className={selectedLevel === "ALL" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("ALL")}
+          >
+            All
+          </button>
+          <button
+            className={selectedLevel === "BEGINNER" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("BEGINNER")}
+          >
+            Beginner
+          </button>
+          <button
+            className={selectedLevel === "BEGINNER_PLUS" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("BEGINNER_PLUS")}
+          >
+            Beginner+
+          </button>
+          <button
+            className={selectedLevel === "INTERMEDIATE" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("INTERMEDIATE")}
+          >
+            Intermediate
+          </button>
+          <button
+            className={selectedLevel === "ADVANCED" ? "segment-active" : ""}
+            onClick={() => setSelectedLevel("ADVANCED")}
+          >
+            Advanced
+          </button>
+        </div>
+      </div>
+
+      {filteredMatches.length === 0 ? (
+        <div className="section-card empty-state">
+          <h3>No open matches found</h3>
+          <p>
+            Create the first match post or switch the level filter to see more
+            options.
+          </p>
+        </div>
+      ) : (
+        <div className="card-grid">
+          {filteredMatches.map((match) => {
+            const isMine = match.creator.id === user?.id;
+            const requested = hasRequested(match);
+
+            return (
+              <div key={match.id} className="section-card premium-card">
                 <div className="card-top">
-                  <h3>{match.title}</h3>
-                  <span className="badge">{match.status}</span>
+                  <div>
+                    <p className="mini-eyebrow">{match.court.name}</p>
+                    <h2>{match.title}</h2>
+                  </div>
+
+                  <span className={`badge ${match.status.toLowerCase()}`}>
+                    {match.status}
+                  </span>
                 </div>
 
-                <p>{match.description}</p>
-                <small>{match.court.name}</small>
-                <small>{formatDate(match.startTime)}</small>
-                <small>
-                  {match.creator.fullName} / {match.creator.tennisLevel}
-                </small>
+                <p className="card-description">
+                  {match.description || "No description provided."}
+                </p>
 
-                <button onClick={() => handleJoinRequest(match.id)}>
-                  Request to join
-                </button>
+                <div className="player-card">
+                  <div className="user-avatar">
+                    {match.creator.fullName.charAt(0).toUpperCase()}
+                  </div>
+
+                  <div>
+                    <strong>{match.creator.fullName}</strong>
+                    <small>
+                      {match.creator.tennisLevel} /{" "}
+                      {match.creator.hasRacket ? "Has racket" : "Needs racket"}
+                    </small>
+                  </div>
+                </div>
+
+                <div className="details-box">
+                  <div className="detail-row">
+                    <span>Time</span>
+                    <strong>{formatDate(match.startTime)}</strong>
+                  </div>
+                  <div className="detail-row">
+                    <span>Preferred level</span>
+                    <strong>{match.preferredLevel}</strong>
+                  </div>
+                  <div className="detail-row">
+                    <span>Requests</span>
+                    <strong>{match.requests.length}</strong>
+                  </div>
+                </div>
+
+                {isMine ? (
+                  <div className="status-panel">
+                    <span>This is your post</span>
+                    <strong>Manage requests above</strong>
+                  </div>
+                ) : requested ? (
+                  <button disabled>Request already sent</button>
+                ) : (
+                  <button onClick={() => handleJoinRequest(match.id)}>
+                    Request to join
+                  </button>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

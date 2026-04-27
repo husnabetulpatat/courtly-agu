@@ -150,8 +150,31 @@ const getMe = async (req, res) => {
   });
 };
 
+const updateProfile = async (req, res) => {
+  try {
+    const { hasRacket } = req.body;
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        hasRacket: Boolean(hasRacket)
+      }
+    });
+
+    return res.json({
+      message: "Profile updated successfully",
+      user: cleanUser(updatedUser)
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Profile update failed"
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
-  getMe
+  getMe,
+  updateProfile
 };
