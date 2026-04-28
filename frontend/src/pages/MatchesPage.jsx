@@ -2,9 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
 
 const MatchesPage = () => {
   const { user } = useAuth();
+
+  const toast = useToast();
+  const { confirm } = useConfirm();
 
   const [matches, setMatches] = useState([]);
   const [myMatches, setMyMatches] = useState([]);
@@ -15,6 +20,18 @@ const MatchesPage = () => {
   });
   const [selectedLevel, setSelectedLevel] = useState("ALL");
   const [cancelReasons, setCancelReasons] = useState({});
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const loadData = async () => {
     try {
@@ -89,6 +106,19 @@ const MatchesPage = () => {
 
   const handleCancelMatch = async (matchId) => {
     try {
+      const confirmed = await confirm({
+        title: "Cancel this match?",
+        message:
+          "The linked reservation will also be cancelled. If a partner was already accepted, they will be notified in the match chat.",
+        confirmText: "Cancel match",
+        cancelText: "Keep match",
+        danger: true
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
       setMessage({
         type: "",
         text: ""
@@ -140,6 +170,21 @@ const MatchesPage = () => {
 
   const handleRequestStatus = async (requestId, status) => {
     try {
+      if (status === "CANCELLED") {
+        const confirmed = await confirm({
+          title: "Cancel this join request?",
+          message:
+            "Your request will be withdrawn and the match owner will no longer see it as pending.",
+          confirmText: "Cancel request",
+          cancelText: "Keep request",
+          danger: true
+        });
+
+        if (!confirmed) {
+          return;
+        }
+      }
+
       setMessage({
         type: "",
         text: ""
@@ -193,12 +238,6 @@ const MatchesPage = () => {
           </div>
         </div>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="section-card match-create-hint-card">
         <div>

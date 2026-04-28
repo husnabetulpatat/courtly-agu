@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
+import PageLoader from "../components/PageLoader";
+import { useToast } from "../context/ToastContext";
 
 const LessonsPage = () => {
+  const toast = useToast();
+
+  const [loading, setLoading] = useState(true);
   const [lessons, setLessons] = useState([]);
   const [myApplications, setMyApplications] = useState([]);
   const [message, setMessage] = useState({
@@ -12,6 +17,8 @@ const LessonsPage = () => {
 
   const loadData = async () => {
     try {
+      setLoading(true);
+
       const [lessonsRes, applicationsRes] = await Promise.all([
         api.get("/lessons"),
         api.get("/lessons/my-applications")
@@ -20,13 +27,28 @@ const LessonsPage = () => {
       setLessons(lessonsRes.data.lessons);
       setMyApplications(applicationsRes.data.applications);
     } catch (error) {
+      toast.error("Could not load lessons.");
       console.log("Lesson load error", error);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const filteredLessons = useMemo(() => {
     if (selectedLevel === "ALL") {
@@ -90,6 +112,15 @@ const LessonsPage = () => {
     });
   };
 
+  if (loading) {
+    return (
+      <PageLoader
+        title="Loading lessons..."
+        text="Available lessons and your applications are being prepared."
+      />
+    );
+  }
+
   return (
     <section className="page">
       <div className="section-card page-banner">
@@ -108,12 +139,6 @@ const LessonsPage = () => {
           <strong>{myApplications.length}</strong>
         </div>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="section-card lesson-toolbar">
         <div>

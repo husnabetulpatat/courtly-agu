@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import { useConfirm } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
 
 const SLOT_START_HOUR = 8;
 const SLOT_END_HOUR = 22;
@@ -70,6 +72,9 @@ const overlaps = (startA, endA, startB, endB) => {
 const ReservationsPage = () => {
   const { user } = useAuth();
 
+  const toast = useToast();
+  const { confirm } = useConfirm();
+
   const [courts, setCourts] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [lessons, setLessons] = useState([]);
@@ -89,6 +94,18 @@ const ReservationsPage = () => {
   const [matchTitle, setMatchTitle] = useState("");
   const [matchDescription, setMatchDescription] = useState("");
   const [preferredLevel, setPreferredLevel] = useState(user?.tennisLevel || "BEGINNER");
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const dateOptions = useMemo(() => getDateOptions(), []);
 
@@ -302,6 +319,19 @@ const ReservationsPage = () => {
 
   const handleCancel = async (id) => {
     try {
+      const confirmed = await confirm({
+        title: "Cancel this reservation?",
+        message:
+          "If this reservation has a linked partner-search match, that match will also be cancelled.",
+        confirmText: "Cancel reservation",
+        cancelText: "Keep reservation",
+        danger: true
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
       await api.patch(`/reservations/${id}/cancel`, {
         reason: "Cancelled from Reserve Court page."
       });
@@ -411,12 +441,6 @@ const ReservationsPage = () => {
           <strong>{upcomingReservations.length}</strong>
         </div>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="booking-layout">
         <div className="section-card booking-control-card">

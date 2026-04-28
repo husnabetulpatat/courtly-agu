@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/api";
 import { useAuth } from "../context/AuthContext";
+import PageLoader from "../components/PageLoader";
 
 const DashboardPage = () => {
   const { user } = useAuth();
@@ -189,12 +190,10 @@ const DashboardPage = () => {
 
   if (loading) {
     return (
-      <section className="page">
-        <div className="section-card empty-state">
-          <h3>Loading dashboard...</h3>
-          <p>Your tennis activity is being prepared.</p>
-        </div>
-      </section>
+      <PageLoader
+        title="Loading dashboard..."
+        text="Your tennis activity is being prepared."
+      />
     );
   }
 

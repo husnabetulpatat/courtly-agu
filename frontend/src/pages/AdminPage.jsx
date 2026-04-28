@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
 import AdminUsersPanel from "../components/AdminUsersPanel";
+import { useConfirm } from "../context/ConfirmContext";
+import { useToast } from "../context/ToastContext";
 
 const getTomorrowDateValue = () => {
   const date = new Date();
@@ -10,6 +12,9 @@ const getTomorrowDateValue = () => {
 
 const AdminPage = () => {
   const [activeTab, setActiveTab] = useState("overview");
+
+  const toast = useToast();
+  const { confirm } = useConfirm();
 
   const [courts, setCourts] = useState([]);
   const [lessons, setLessons] = useState([]);
@@ -105,6 +110,18 @@ const AdminPage = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const reservationGroups = useMemo(() => {
     const now = new Date();
@@ -205,9 +222,14 @@ const AdminPage = () => {
 
   const handleDeleteLesson = async (lessonId) => {
     try {
-      const confirmed = window.confirm(
-        "Are you sure you want to delete this lesson? Applications connected to this lesson will also be deleted."
-      );
+      const confirmed = await confirm({
+        title: "Delete this lesson?",
+        message:
+          "Applications connected to this lesson will also be deleted. This action cannot be undone.",
+        confirmText: "Delete lesson",
+        cancelText: "Keep lesson",
+        danger: true
+      });
 
       if (!confirmed) {
         return;
@@ -276,9 +298,14 @@ const AdminPage = () => {
 
   const handleDeleteAnnouncement = async (announcementId) => {
     try {
-      const confirmed = window.confirm(
-        "Are you sure you want to delete this announcement?"
-      );
+      const confirmed = await confirm({
+        title: "Delete this announcement?",
+        message:
+          "This announcement will disappear from student dashboards. This action cannot be undone.",
+        confirmText: "Delete announcement",
+        cancelText: "Keep announcement",
+        danger: true
+      });
 
       if (!confirmed) {
         return;
@@ -483,9 +510,14 @@ const AdminPage = () => {
 
   const handleDeleteTournamentMatch = async (matchId) => {
     try {
-      const confirmed = window.confirm(
-        "Are you sure you want to delete this tournament match?"
-      );
+      const confirmed = await confirm({
+        title: "Delete this tournament match?",
+        message:
+          "This tournament match will be removed from the public tournament schedule. This action cannot be undone.",
+        confirmText: "Delete match",
+        cancelText: "Keep match",
+        danger: true
+      });
 
       if (!confirmed) {
         return;
@@ -643,12 +675,6 @@ const AdminPage = () => {
           </div>
         </div>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="section-card admin-tab-card">
         <button

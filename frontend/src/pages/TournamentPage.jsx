@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
+import PageLoader from "../components/PageLoader";
+import { useToast } from "../context/ToastContext";
 
 const TournamentPage = () => {
+  const toast = useToast();
+  const [loading, setLoading] = useState(true);
+
   const [matches, setMatches] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState("ALL");
 
   const loadMatches = async () => {
     try {
+      setLoading(true);
+
       const response = await api.get("/tournaments", {
         params: selectedStatus !== "ALL" ? { status: selectedStatus } : {}
       });
 
       setMatches(response.data.matches);
     } catch (error) {
+      toast.error("Could not load tournament matches.");
       console.log("Tournament load error", error);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,6 +113,15 @@ const TournamentPage = () => {
       </div>
     );
   };
+
+  if (loading) {
+    return (
+      <PageLoader
+        title="Loading tournament..."
+        text="Tournament schedule and match results are being prepared."
+      />
+    );
+  }
 
   return (
     <section className="page">

@@ -1,32 +1,44 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
 
-  const [email, setEmail] = useState("husna@agu.edu.tr");
-  const [password, setPassword] = useState("123456");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [formData, setFormData] = useState({
+    email: "",
+    password: ""
+  });
+
+  const updateField = (field, value) => {
+    setFormData((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     try {
       setLoading(true);
-      setError("");
 
-      const user = await login(email, password);
-
-      if (user.role === "ADMIN" || user.role === "COACH") {
-        navigate("/admin");
-      } else {
-        navigate("/");
+      if (!formData.email.trim() || !formData.password.trim()) {
+        toast.error("Please enter your email and password.");
+        return;
       }
+
+      await login(formData.email, formData.password);
+
+      toast.success("Welcome back to Courtly AGÜ.", "Login successful");
+      navigate("/");
     } catch (error) {
-      setError(error.response?.data?.message || "Login failed");
+      toast.error(error.response?.data?.message || "Login failed.");
     } finally {
       setLoading(false);
     }
@@ -37,31 +49,33 @@ const LoginPage = () => {
       <div className="auth-card">
         <div className="auth-hero">
           <span>🎾</span>
-          <h1>AGÜ Tennis Platform</h1>
+          <h1>Courtly AGÜ</h1>
           <p>
-            Reserve courts, join lessons and find tennis partners on campus.
+            Reserve campus courts, join lessons and find tennis partners through
+            one clean platform.
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="form">
-          <h2>Login</h2>
-
-          {error && <div className="alert error">{error}</div>}
+          <div>
+            <p className="eyebrow">Welcome back</p>
+            <h2>Login</h2>
+          </div>
 
           <label>Email</label>
           <input
             type="email"
-            value={email}
-            placeholder="student@agu.edu.tr"
-            onChange={(event) => setEmail(event.target.value)}
+            placeholder="your.name@agu.edu.tr"
+            value={formData.email}
+            onChange={(event) => updateField("email", event.target.value)}
           />
 
           <label>Password</label>
           <input
             type="password"
-            value={password}
-            placeholder="123456"
-            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Your password"
+            value={formData.password}
+            onChange={(event) => updateField("password", event.target.value)}
           />
 
           <button type="submit" disabled={loading}>
@@ -69,13 +83,14 @@ const LoginPage = () => {
           </button>
 
           <p className="auth-note">
-            No account? <Link to="/register">Create one</Link>
+            Do not have an account? <Link to="/register">Create one</Link>
           </p>
 
           <div className="demo-box">
-            <strong>Demo accounts</strong>
-            <small>Student: husna@agu.edu.tr / 123456</small>
-            <small>Admin: admin@agu.edu.tr / 123456</small>
+            <strong>Campus access</strong>
+            <small>
+              Use your AGÜ email address to access the platform.
+            </small>
           </div>
         </form>
       </div>

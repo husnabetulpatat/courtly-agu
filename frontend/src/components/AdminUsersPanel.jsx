@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
+import { useToast } from "../context/ToastContext";
 
 const AdminUsersPanel = () => {
+  const toast = useToast();
+
   const [users, setUsers] = useState([]);
   const [selectedRole, setSelectedRole] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
@@ -26,6 +29,18 @@ const AdminUsersPanel = () => {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
@@ -92,12 +107,6 @@ const AdminUsersPanel = () => {
           Refresh
         </button>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="admin-user-toolbar">
         <input

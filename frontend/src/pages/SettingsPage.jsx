@@ -1,9 +1,20 @@
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 const SettingsPage = () => {
   const { user } = useAuth();
   const { themePreference, appliedTheme, changeTheme } = useTheme();
+  const toast = useToast();
+
+  const handleThemeChange = (theme) => {
+    changeTheme(theme);
+
+    toast.success(
+      `Theme preference changed to ${theme}.`,
+      "Settings updated"
+    );
+  };
 
   return (
     <section className="page">
@@ -38,7 +49,7 @@ const SettingsPage = () => {
               className={`theme-option-card ${
                 themePreference === "light" ? "theme-option-active" : ""
               }`}
-              onClick={() => changeTheme("light")}
+              onClick={() => handleThemeChange("light")}
             >
               <span className="theme-icon">☀️</span>
               <strong>Light</strong>
@@ -50,7 +61,7 @@ const SettingsPage = () => {
               className={`theme-option-card ${
                 themePreference === "dark" ? "theme-option-active" : ""
               }`}
-              onClick={() => changeTheme("dark")}
+              onClick={() => handleThemeChange("dark")}
             >
               <span className="theme-icon">🌙</span>
               <strong>Dark</strong>
@@ -62,7 +73,7 @@ const SettingsPage = () => {
               className={`theme-option-card ${
                 themePreference === "system" ? "theme-option-active" : ""
               }`}
-              onClick={() => changeTheme("system")}
+              onClick={() => handleThemeChange("system")}
             >
               <span className="theme-icon">💻</span>
               <strong>System</strong>
@@ -101,14 +112,17 @@ const SettingsPage = () => {
               <span>Role</span>
               <strong>{user?.role}</strong>
             </div>
+
             <div className="detail-row">
               <span>Tennis level</span>
               <strong>{user?.tennisLevel}</strong>
             </div>
+
             <div className="detail-row">
               <span>Racket status</span>
               <strong>{user?.hasRacket ? "Has racket" : "May need racket"}</strong>
             </div>
+
             <div className="detail-row">
               <span>Theme preference</span>
               <strong>{themePreference}</strong>

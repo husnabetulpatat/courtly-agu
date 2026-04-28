@@ -1,15 +1,22 @@
 import { useEffect, useState } from "react";
 import api from "../api/api";
+import PageLoader from "../components/PageLoader";
+import { useToast } from "../context/ToastContext";
 
 const CourtsPage = () => {
+  const toast = useToast();
+
   const [courts, setCourts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const loadCourts = async () => {
     try {
+      setLoading(true);
+
       const response = await api.get("/courts");
       setCourts(response.data.courts);
     } catch (error) {
+      toast.error("Could not load courts.");
       console.log("Court load error", error);
     } finally {
       setLoading(false);
@@ -19,6 +26,15 @@ const CourtsPage = () => {
   useEffect(() => {
     loadCourts();
   }, []);
+
+  if (loading) {
+    return (
+      <PageLoader
+        title="Loading courts..."
+        text="Campus court information is being prepared."
+      />
+    );
+  }
 
   return (
     <section className="page">
@@ -38,9 +54,7 @@ const CourtsPage = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="page-message">Loading courts...</div>
-      ) : courts.length === 0 ? (
+      {courts.length === 0 ? (
         <div className="section-card empty-state">
           <h3>No courts found</h3>
           <p>Courts will appear here once they are added by the admin.</p>
@@ -67,10 +81,12 @@ const CourtsPage = () => {
                   <span>Location</span>
                   <strong>{court.location || "Not specified"}</strong>
                 </div>
+
                 <div className="detail-row">
                   <span>Status</span>
                   <strong>{court.status}</strong>
                 </div>
+
                 <div className="detail-row">
                   <span>Usage</span>
                   <strong>

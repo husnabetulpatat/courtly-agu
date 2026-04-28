@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 
 const ProfilePage = () => {
   const { user, updateProfile } = useAuth();
+  const toast = useToast();
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -26,6 +28,18 @@ const ProfilePage = () => {
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!message.text) {
+      return;
+    }
+
+    if (message.type === "error") {
+      toast.error(message.text);
+    } else {
+      toast.success(message.text);
+    }
+  }, [message, toast]);
 
   const updateField = (field, value) => {
     setFormData((current) => ({
@@ -73,12 +87,6 @@ const ProfilePage = () => {
           {user?.fullName?.charAt(0)?.toUpperCase() || "A"}
         </div>
       </div>
-
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
 
       <div className="two-column profile-layout">
         <form onSubmit={handleSubmit} className="section-card form premium-form-card">
