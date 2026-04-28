@@ -333,11 +333,58 @@ const updateApplicationStatus = async (req, res) => {
   }
 };
 
+const deleteLesson = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const lesson = await prisma.lesson.findUnique({
+      where: {
+        id: Number(id)
+      }
+    });
+
+    if (!lesson) {
+      return res.status(404).json({
+        message: "Lesson not found"
+      });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.attendanceRecord.deleteMany({
+        where: {
+          lessonId: Number(id)
+        }
+      });
+
+      await tx.lessonApplication.deleteMany({
+        where: {
+          lessonId: Number(id)
+        }
+      });
+
+      await tx.lesson.delete({
+        where: {
+          id: Number(id)
+        }
+      });
+    });
+
+    return res.json({
+      message: "Lesson deleted successfully"
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Could not delete lesson"
+    });
+  }
+};
+
 module.exports = {
   getLessons,
   createLesson,
   applyToLesson,
   getMyLessonApplications,
   getLessonApplications,
-  updateApplicationStatus
+  updateApplicationStatus,
+  deleteLesson
 };

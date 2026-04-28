@@ -4,19 +4,11 @@ import { useAuth } from "../context/AuthContext";
 const pageMeta = {
   "/": {
     title: "Dashboard",
-    subtitle: "Your campus tennis activity, lessons and matches in one place."
-  },
-  "/courts": {
-    title: "Courts",
-    subtitle: "Explore available campus courts and their current status."
+    subtitle: "Announcements, quick actions and current campus tennis updates."
   },
   "/reservations": {
-    title: "Reserve a Court",
-    subtitle: "Reserve courts with a clean, fair and transparent flow."
-  },
-  "/my-reservations": {
-    title: "My Reservations",
-    subtitle: "View and manage your upcoming tennis sessions."
+    title: "Reserve Court",
+    subtitle: "Pick a court, choose a day and reserve an available time slot."
   },
   "/lessons": {
     title: "Lessons",
@@ -24,15 +16,23 @@ const pageMeta = {
   },
   "/matches": {
     title: "Matches",
-    subtitle: "Find tennis partners at your level and create match posts."
+    subtitle: "Find tennis partners at your level and manage partner searches."
   },
-  "/admin": {
-    title: "Admin Panel",
-    subtitle: "Manage lessons, applications and announcements."
+  "/courts": {
+    title: "Courts",
+    subtitle: "Explore available campus courts and their current status."
+  },
+  "/profile": {
+    title: "Profile",
+    subtitle: "Manage your tennis level, racket status and player information."
   },
   "/settings": {
     title: "Settings",
-    subtitle: "Manage your theme and profile preferences."
+    subtitle: "Control appearance and future app preferences."
+  },
+  "/admin": {
+    title: "Admin Panel",
+    subtitle: "Manage lessons, applications, courts and announcements."
   }
 };
 
@@ -42,7 +42,7 @@ const Layout = () => {
   const location = useLocation();
 
   const currentPage = pageMeta[location.pathname] || {
-    title: "AGÜ Tennis",
+    title: "Courtly AGÜ",
     subtitle: "A modern court reservation and player matching experience."
   };
 
@@ -67,40 +67,35 @@ const Layout = () => {
 
           <nav className="nav-links">
             <NavLink to="/">Dashboard</NavLink>
-            <NavLink to="/courts">Courts</NavLink>
             <NavLink to="/reservations">Reserve Court</NavLink>
-            <NavLink to="/my-reservations">My Reservations</NavLink>
             <NavLink to="/lessons">Lessons</NavLink>
             <NavLink to="/matches">Matches</NavLink>
+            <NavLink to="/courts">Courts</NavLink>
+            <NavLink to="/profile">Profile</NavLink>
             <NavLink to="/settings">Settings</NavLink>
             {isAdmin && <NavLink to="/admin">Admin</NavLink>}
           </nav>
 
+          <div className="sidebar-note">
+            <p className="sidebar-note-title">Fair court usage</p>
+            <small>
+              Reserve courts, join lessons and connect with players at your level.
+            </small>
+          </div>
 
-
-          <div className="sidebar-user">
-            <div className="user-card">
-              <div className="user-avatar">
+          <div className="sidebar-footer">
+            <div className="sidebar-footer-info">
+              <div className="user-avatar compact-avatar">
                 {user?.fullName?.charAt(0)?.toUpperCase() || "A"}
               </div>
 
               <div>
                 <p>{user?.fullName}</p>
-                <small>{user?.email}</small>
+                <small>{user?.role}</small>
               </div>
             </div>
 
-            <div className="user-tags">
-              <span className="soft-pill">{user?.role}</span>
-              <span className="soft-pill">{user?.tennisLevel}</span>
-              {user?.hasRacket ? (
-                <span className="soft-pill">Has racket</span>
-              ) : (
-                <span className="soft-pill muted-pill">Needs racket</span>
-              )}
-            </div>
-
-            <button className="logout-button" onClick={handleLogout}>
+            <button className="sidebar-logout-mini" onClick={handleLogout}>
               Logout
             </button>
           </div>
@@ -113,14 +108,6 @@ const Layout = () => {
             <p className="eyebrow">Courtly AGÜ</p>
             <h1>{currentPage.title}</h1>
             <p className="topbar-subtitle">{currentPage.subtitle}</p>
-          </div>
-
-          <div className="topbar-right">
-            <div className="topbar-card">
-              <span className="topbar-card-label">Current profile</span>
-              <strong>{user?.tennisLevel}</strong>
-              <small>{user?.role}</small>
-            </div>
           </div>
         </header>
 

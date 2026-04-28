@@ -1,57 +1,32 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/api";
 import { useAuth } from "../context/AuthContext";
-
-const getTomorrowDateValue = () => {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  return date.toISOString().split("T")[0];
-};
 
 const MatchesPage = () => {
   const { user } = useAuth();
 
-  const [courts, setCourts] = useState([]);
   const [matches, setMatches] = useState([]);
   const [myMatches, setMyMatches] = useState([]);
+  const [myRequests, setMyRequests] = useState([]);
   const [message, setMessage] = useState({
     type: "",
     text: ""
   });
   const [selectedLevel, setSelectedLevel] = useState("ALL");
-
-  const [formData, setFormData] = useState({
-    courtId: "",
-    title: "",
-    description: "",
-    preferredLevel: "BEGINNER",
-    date: getTomorrowDateValue(),
-    startHour: "17:00",
-    duration: "60"
-  });
-
-  const updateField = (field, value) => {
-    setFormData((current) => ({
-      ...current,
-      [field]: value
-    }));
-  };
+  const [cancelReasons, setCancelReasons] = useState({});
 
   const loadData = async () => {
     try {
-      const [courtsRes, matchesRes, myMatchesRes] = await Promise.all([
-        api.get("/courts"),
+      const [matchesRes, myMatchesRes, myRequestsRes] = await Promise.all([
         api.get("/matches"),
-        api.get("/matches/my")
+        api.get("/matches/my"),
+        api.get("/matches/my-requests")
       ]);
 
-      setCourts(courtsRes.data.courts);
       setMatches(matchesRes.data.matchPosts);
       setMyMatches(myMatchesRes.data.matchPosts);
-
-      if (!formData.courtId && courtsRes.data.courts.length > 0) {
-        updateField("courtId", String(courtsRes.data.courts[0].id));
-      }
+      setMyRequests(myRequestsRes.data.requests);
     } catch (error) {
       console.log("Match load error", error);
     }
@@ -61,9 +36,18 @@ const MatchesPage = () => {
     loadData();
   }, []);
 
+  const activeMyPartnerSearches = useMemo(() => {
+    return myMatches.filter((match) =>
+      ["OPEN", "MATCHED"].includes(match.status)
+    ).length;
+  }, [myMatches]);
+
   const filteredMatches = useMemo(() => {
     const futureOpenMatches = matches.filter((match) => {
-      return new Date(match.startTime) > new Date();
+      return (
+        match.status !== "CANCELLED" &&
+        new Date(match.startTime) > new Date()
+      );
     });
 
     if (selectedLevel === "ALL") {
@@ -75,57 +59,56 @@ const MatchesPage = () => {
     );
   }, [matches, selectedLevel]);
 
+  const visibleMyMatches = useMemo(() => {
+    return myMatches.filter((match) => match.status !== "CANCELLED");
+  }, [myMatches]);
+
+  const visibleMyRequests = useMemo(() => {
+    return myRequests.filter((request) => {
+      return (
+        request.status !== "CANCELLED" &&
+        request.matchPost?.status !== "CANCELLED"
+      );
+    });
+  }, [myRequests]);
+
   const hasRequested = (match) => {
     return match.requests.some((request) => request.requesterId === user?.id);
   };
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
+  const getAcceptedRequest = (match) => {
+    return match.requests.find((request) => request.status === "ACCEPTED");
+  };
 
+  const updateCancelReason = (matchId, value) => {
+    setCancelReasons((current) => ({
+      ...current,
+      [matchId]: value
+    }));
+  };
+
+  const handleCancelMatch = async (matchId) => {
     try {
       setMessage({
         type: "",
         text: ""
       });
 
-      if (!formData.date || !formData.title.trim()) {
-        setMessage({
-          type: "error",
-          text: "Please enter a title and select a date."
-        });
-        return;
-      }
-
-      const startTime = new Date(`${formData.date}T${formData.startHour}:00`);
-      const endTime = new Date(
-        startTime.getTime() + Number(formData.duration) * 60 * 1000
-      );
-
-      await api.post("/matches", {
-        courtId: Number(formData.courtId),
-        title: formData.title,
-        description: formData.description,
-        preferredLevel: formData.preferredLevel,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString()
+      await api.patch(`/matches/${matchId}/cancel`, {
+        reason: cancelReasons[matchId] || ""
       });
 
       setMessage({
         type: "success",
-        text: "Match post created successfully. Students can now request to join."
+        text: "Match cancelled successfully."
       });
 
-      setFormData((current) => ({
-        ...current,
-        title: "",
-        description: ""
-      }));
-
+      updateCancelReason(matchId, "");
       await loadData();
     } catch (error) {
       setMessage({
         type: "error",
-        text: error.response?.data?.message || "Match post failed."
+        text: error.response?.data?.message || "Cancel failed."
       });
     }
   };
@@ -191,17 +174,23 @@ const MatchesPage = () => {
     <section className="page">
       <div className="section-card page-banner">
         <div>
-          <p className="eyebrow">Social tennis layer</p>
-          <h2>Find the right player, not just an empty court</h2>
+          <p className="eyebrow">Partner search hub</p>
+          <h2>Matches are now created from Reserve Court</h2>
           <p>
-            Create match posts, receive requests and approve players only when
-            both the time and profile feel right.
+            To publish a new partner-search post, first choose a court and time
+            from Reserve Court, then select “Looking for partner”.
           </p>
         </div>
 
-        <div className="banner-metric">
-          <span>Open matches</span>
-          <strong>{filteredMatches.length}</strong>
+        <div className="admin-metrics">
+          <div className="banner-metric">
+            <span>Open searches</span>
+            <strong>{filteredMatches.length}</strong>
+          </div>
+          <div className="banner-metric">
+            <span>My active</span>
+            <strong>{activeMyPartnerSearches}</strong>
+          </div>
         </div>
       </div>
 
@@ -211,182 +200,25 @@ const MatchesPage = () => {
         </div>
       )}
 
-      <div className="two-column">
-        <form onSubmit={handleCreate} className="section-card form premium-form-card">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Create</p>
-              <h2>New match post</h2>
-            </div>
-          </div>
-
-          <label>Court</label>
-          <select
-            value={formData.courtId}
-            onChange={(event) => updateField("courtId", event.target.value)}
-          >
-            {courts.map((court) => (
-              <option key={court.id} value={court.id}>
-                {court.name}
-              </option>
-            ))}
-          </select>
-
-          <label>Title</label>
-          <input
-            value={formData.title}
-            placeholder="Looking for a beginner-friendly partner"
-            onChange={(event) => updateField("title", event.target.value)}
-          />
-
-          <label>Description</label>
-          <textarea
-            value={formData.description}
-            placeholder="Tell others your level, style and what kind of session you want."
-            onChange={(event) => updateField("description", event.target.value)}
-          />
-
-          <label>Preferred level</label>
-          <select
-            value={formData.preferredLevel}
-            onChange={(event) =>
-              updateField("preferredLevel", event.target.value)
-            }
-          >
-            <option value="BEGINNER">Beginner</option>
-            <option value="BEGINNER_PLUS">Beginner+</option>
-            <option value="INTERMEDIATE">Intermediate</option>
-            <option value="ADVANCED">Advanced</option>
-          </select>
-
-          <div className="inline-form-row">
-            <div>
-              <label>Date</label>
-              <input
-                type="date"
-                min={getTomorrowDateValue()}
-                value={formData.date}
-                onChange={(event) => updateField("date", event.target.value)}
-              />
-            </div>
-
-            <div>
-              <label>Start hour</label>
-              <input
-                type="time"
-                value={formData.startHour}
-                onChange={(event) => updateField("startHour", event.target.value)}
-              />
-            </div>
-          </div>
-
-          <label>Duration</label>
-          <select
-            value={formData.duration}
-            onChange={(event) => updateField("duration", event.target.value)}
-          >
-            <option value="30">30 minutes</option>
-            <option value="60">60 minutes</option>
-            <option value="90">90 minutes</option>
-            <option value="120">120 minutes</option>
-          </select>
-
-          <p className="helper-text">
-            Creating a match post also reserves the selected court time for you.
-            Once you accept a request, the match becomes confirmed.
+      <div className="section-card match-create-hint-card">
+        <div>
+          <p className="eyebrow">Create a partner search</p>
+          <h2>Reserve a court first</h2>
+          <p>
+            Partner-search posts are connected to real court reservations so the
+            court time is always protected and visible in the reservation system.
           </p>
-
-          <button type="submit">Create match post</button>
-        </form>
-
-        <div className="section-card">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Yours</p>
-              <h2>My match posts</h2>
-            </div>
-          </div>
-
-          {myMatches.length === 0 ? (
-            <div className="empty-state compact-empty">
-              <h3>No match posts yet</h3>
-              <p>Your created match posts and incoming requests will appear here.</p>
-            </div>
-          ) : (
-            <div className="list">
-              {myMatches.map((match) => (
-                <div key={match.id} className="list-item">
-                  <div className="card-top">
-                    <div>
-                      <h3>{match.title}</h3>
-                      <p>{match.court.name}</p>
-                    </div>
-                    <span className={`badge ${match.status.toLowerCase()}`}>
-                      {match.status}
-                    </span>
-                  </div>
-
-                  <small>{formatDate(match.startTime)}</small>
-
-                  {match.requests.length === 0 ? (
-                    <div className="tiny-empty">
-                      No requests yet. This post is visible to other students.
-                    </div>
-                  ) : (
-                    <div className="request-box">
-                      <strong>Incoming requests</strong>
-
-                      {match.requests.map((request) => (
-                        <div key={request.id} className="request-row premium-request-row">
-                          <div>
-                            <strong>{request.requester.fullName}</strong>
-                            <small>
-                              {request.requester.tennisLevel} /{" "}
-                              {request.requester.hasRacket
-                                ? "Has racket"
-                                : "Needs racket"}
-                            </small>
-                            {request.note && <p>{request.note}</p>}
-                          </div>
-
-                          <span className={`badge ${request.status.toLowerCase()}`}>
-                            {request.status}
-                          </span>
-
-                          {request.status === "PENDING" && (
-                            <div className="button-row">
-                              <button
-                                onClick={() =>
-                                  handleRequestStatus(request.id, "ACCEPTED")
-                                }
-                              >
-                                Accept
-                              </button>
-                              <button
-                                className="secondary-button"
-                                onClick={() =>
-                                  handleRequestStatus(request.id, "REJECTED")
-                                }
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+
+        <Link to="/reservations" className="cta-link primary-link">
+          Go to Reserve Court
+        </Link>
       </div>
 
       <div className="section-card lesson-toolbar">
         <div>
           <p className="eyebrow">Discover</p>
-          <h2>Open match posts</h2>
+          <h2>Open partner searches</h2>
         </div>
 
         <div className="segmented-control">
@@ -425,10 +257,10 @@ const MatchesPage = () => {
 
       {filteredMatches.length === 0 ? (
         <div className="section-card empty-state">
-          <h3>No open matches found</h3>
+          <h3>No open partner searches found</h3>
           <p>
-            Create the first match post or switch the level filter to see more
-            options.
+            Create the first partner-search reservation or switch the level
+            filter to see more options.
           </p>
         </div>
       ) : (
@@ -436,6 +268,7 @@ const MatchesPage = () => {
           {filteredMatches.map((match) => {
             const isMine = match.creator.id === user?.id;
             const requested = hasRequested(match);
+            const acceptedRequest = getAcceptedRequest(match);
 
             return (
               <div key={match.id} className="section-card premium-card">
@@ -468,6 +301,13 @@ const MatchesPage = () => {
                   </div>
                 </div>
 
+                {acceptedRequest && (
+                  <div className="status-panel">
+                    <span>Matched with</span>
+                    <strong>{acceptedRequest.requester.fullName}</strong>
+                  </div>
+                )}
+
                 <div className="details-box">
                   <div className="detail-row">
                     <span>Time</span>
@@ -486,20 +326,210 @@ const MatchesPage = () => {
                 {isMine ? (
                   <div className="status-panel">
                     <span>This is your post</span>
-                    <strong>Manage requests above</strong>
+                    <strong>Manage requests below</strong>
                   </div>
                 ) : requested ? (
                   <button disabled>Request already sent</button>
-                ) : (
+                ) : match.status === "OPEN" ? (
                   <button onClick={() => handleJoinRequest(match.id)}>
                     Request to join
                   </button>
+                ) : (
+                  <button disabled>Already matched</button>
                 )}
               </div>
             );
           })}
         </div>
       )}
+
+      <div className="two-column dashboard-columns">
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Yours</p>
+              <h2>My partner searches</h2>
+            </div>
+          </div>
+
+          {visibleMyMatches.length === 0 ? (
+            <div className="empty-state compact-empty">
+              <h3>No partner searches yet</h3>
+              <p>
+                Create one from Reserve Court by selecting “Looking for partner”.
+              </p>
+            </div>
+          ) : (
+            <div className="list">
+              {visibleMyMatches.map((match) => {
+                const acceptedRequest = getAcceptedRequest(match);
+                const canCancel = ["OPEN", "MATCHED"].includes(match.status);
+
+                return (
+                  <div key={match.id} className="list-item">
+                    <div className="card-top">
+                      <div>
+                        <h3>{match.title}</h3>
+                        <p>{match.court.name}</p>
+                      </div>
+                      <span className={`badge ${match.status.toLowerCase()}`}>
+                        {match.status}
+                      </span>
+                    </div>
+
+                    <small>{formatDate(match.startTime)}</small>
+
+                    {acceptedRequest && (
+                      <div className="matched-partner-card">
+                        <div className="user-avatar compact-avatar">
+                          {acceptedRequest.requester.fullName
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div>
+                          <span>Matched partner</span>
+                          <strong>{acceptedRequest.requester.fullName}</strong>
+                          <small>
+                            {acceptedRequest.requester.tennisLevel} /{" "}
+                            {acceptedRequest.requester.hasRacket
+                              ? "Has racket"
+                              : "Needs racket"}
+                          </small>
+                        </div>
+                      </div>
+                    )}
+
+                    {match.requests.length === 0 ? (
+                      <div className="tiny-empty">
+                        No requests yet. This post is visible to other students.
+                      </div>
+                    ) : (
+                      <div className="request-box">
+                        <strong>Incoming requests</strong>
+
+                        {match.requests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="request-row premium-request-row"
+                          >
+                            <div>
+                              <strong>{request.requester.fullName}</strong>
+                              <small>
+                                {request.requester.tennisLevel} /{" "}
+                                {request.requester.hasRacket
+                                  ? "Has racket"
+                                  : "Needs racket"}
+                              </small>
+                              {request.note && <p>{request.note}</p>}
+                            </div>
+
+                            <span className={`badge ${request.status.toLowerCase()}`}>
+                              {request.status}
+                            </span>
+
+                            {request.status === "PENDING" &&
+                              match.status === "OPEN" && (
+                                <div className="button-row">
+                                  <button
+                                    onClick={() =>
+                                      handleRequestStatus(request.id, "ACCEPTED")
+                                    }
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    className="secondary-button"
+                                    onClick={() =>
+                                      handleRequestStatus(request.id, "REJECTED")
+                                    }
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {canCancel && (
+                      <div className="cancel-match-box">
+                        <label>Cancellation note</label>
+                        <textarea
+                          placeholder={
+                            acceptedRequest
+                              ? "Optional note for your matched partner..."
+                              : "Optional reason for cancellation..."
+                          }
+                          value={cancelReasons[match.id] || ""}
+                          onChange={(event) =>
+                            updateCancelReason(match.id, event.target.value)
+                          }
+                        />
+
+                        <button
+                          className="danger-button"
+                          onClick={() => handleCancelMatch(match.id)}
+                        >
+                          Cancel match
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Requests sent</p>
+              <h2>My join requests</h2>
+            </div>
+          </div>
+
+          {visibleMyRequests.length === 0 ? (
+            <div className="empty-state compact-empty">
+              <h3>No join requests yet</h3>
+              <p>When you request to join another match, it will appear here.</p>
+            </div>
+          ) : (
+            <div className="list">
+              {visibleMyRequests.map((request) => (
+                <div key={request.id} className="list-item">
+                  <div className="card-top">
+                    <div>
+                      <h3>{request.matchPost.title}</h3>
+                      <p>{request.matchPost.court.name}</p>
+                    </div>
+
+                    <span className={`badge ${request.status.toLowerCase()}`}>
+                      {request.status}
+                    </span>
+                  </div>
+
+                  <small>{formatDate(request.matchPost.startTime)}</small>
+                  <small>Created by {request.matchPost.creator.fullName}</small>
+
+                  {request.status === "PENDING" && (
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        handleRequestStatus(request.id, "CANCELLED")
+                      }
+                    >
+                      Cancel request
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 };

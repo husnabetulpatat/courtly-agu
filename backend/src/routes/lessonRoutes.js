@@ -5,7 +5,8 @@ const {
   applyToLesson,
   getMyLessonApplications,
   getLessonApplications,
-  updateApplicationStatus
+  updateApplicationStatus,
+  deleteLesson
 } = require("../controllers/lessonController");
 const { protect, requireAdmin } = require("../middlewares/authMiddleware");
 
@@ -17,5 +18,6 @@ router.post("/", protect, requireAdmin, createLesson);
 router.post("/:id/apply", protect, applyToLesson);
 router.get("/:id/applications", protect, requireAdmin, getLessonApplications);
 router.patch("/applications/:applicationId/status", protect, requireAdmin, updateApplicationStatus);
+router.delete("/:id", protect, requireAdmin, deleteLesson);
 
 module.exports = router;

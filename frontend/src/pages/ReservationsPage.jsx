@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api/api";
+import { useAuth } from "../context/AuthContext";
 
 const SLOT_START_HOUR = 8;
 const SLOT_END_HOUR = 22;
@@ -66,9 +68,12 @@ const overlaps = (startA, endA, startB, endB) => {
 };
 
 const ReservationsPage = () => {
+  const { user } = useAuth();
+
   const [courts, setCourts] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [lessons, setLessons] = useState([]);
+  const [myReservations, setMyReservations] = useState([]);
   const [message, setMessage] = useState({
     type: "",
     text: ""
@@ -81,6 +86,10 @@ const ReservationsPage = () => {
   const [reservationType, setReservationType] = useState("WITH_PARTNER");
   const [note, setNote] = useState("");
 
+  const [matchTitle, setMatchTitle] = useState("");
+  const [matchDescription, setMatchDescription] = useState("");
+  const [preferredLevel, setPreferredLevel] = useState(user?.tennisLevel || "BEGINNER");
+
   const dateOptions = useMemo(() => getDateOptions(), []);
 
   const selectedCourt = useMemo(() => {
@@ -89,18 +98,20 @@ const ReservationsPage = () => {
 
   const loadData = async (dateValue = selectedDate) => {
     try {
-      const [courtsRes, reservationsRes, lessonsRes] =
+      const [courtsRes, reservationsRes, myReservationsRes, lessonsRes] =
         await Promise.all([
           api.get("/courts"),
           api.get("/reservations", {
             params: dateValue ? { date: dateValue } : {}
           }),
+          api.get("/reservations/my"),
           api.get("/lessons")
         ]);
 
       const loadedCourts = courtsRes.data.courts;
       setCourts(loadedCourts);
       setReservations(reservationsRes.data.reservations);
+      setMyReservations(myReservationsRes.data.reservations);
       setLessons(lessonsRes.data.lessons);
 
       if (!selectedCourtId && loadedCourts.length > 0) {
@@ -124,6 +135,16 @@ const ReservationsPage = () => {
     setSelectedStartTime("");
   }, [selectedCourtId, duration]);
 
+  useEffect(() => {
+    if (reservationType === "LOOKING_FOR_PARTNER") {
+      setPreferredLevel(user?.tennisLevel || "BEGINNER");
+
+      if (!matchTitle) {
+        setMatchTitle("Looking for a tennis partner");
+      }
+    }
+  }, [reservationType, user]);
+
   const blockedItems = useMemo(() => {
     const activeReservations = reservations
       .filter((reservation) => {
@@ -134,8 +155,8 @@ const ReservationsPage = () => {
       })
       .map((reservation) => ({
         id: `reservation-${reservation.id}`,
-        type: "Reservation",
-        title: reservation.user?.fullName || "Reserved",
+        type: reservation.matchPost ? "Partner search" : "Reservation",
+        title: reservation.matchPost?.title || reservation.user?.fullName || "Reserved",
         startTime: new Date(reservation.startTime),
         endTime: new Date(reservation.endTime)
       }));
@@ -216,6 +237,24 @@ const ReservationsPage = () => {
     return slots.find((slot) => slot.timeValue === selectedStartTime);
   }, [slots, selectedStartTime]);
 
+  const upcomingReservations = myReservations.filter((reservation) => {
+    return (
+      reservation.status !== "CANCELLED" &&
+      new Date(reservation.endTime) >= new Date()
+    );
+  });
+
+  const cancelledReservations = myReservations.filter((reservation) => {
+    return reservation.status === "CANCELLED";
+  });
+
+  const pastReservations = myReservations.filter((reservation) => {
+    return (
+      reservation.status !== "CANCELLED" &&
+      new Date(reservation.endTime) < new Date()
+    );
+  });
+
   const handleCreate = async () => {
     try {
       setMessage({
@@ -231,21 +270,26 @@ const ReservationsPage = () => {
         return;
       }
 
-      await api.post("/reservations", {
+      const response = await api.post("/reservations", {
         courtId: Number(selectedCourtId),
         startTime: selectedSlot.start.toISOString(),
         endTime: selectedSlot.end.toISOString(),
         type: reservationType,
-        note
+        note,
+        matchTitle,
+        matchDescription,
+        preferredLevel
       });
 
       setMessage({
         type: "success",
-        text: "Reservation created successfully."
+        text: response.data.message || "Reservation created successfully."
       });
 
       setSelectedStartTime("");
       setNote("");
+      setMatchTitle("");
+      setMatchDescription("");
 
       await loadData(selectedDate);
     } catch (error) {
@@ -256,11 +300,99 @@ const ReservationsPage = () => {
     }
   };
 
+  const handleCancel = async (id) => {
+    try {
+      await api.patch(`/reservations/${id}/cancel`, {
+        reason: "Cancelled from Reserve Court page."
+      });
 
+      setMessage({
+        type: "success",
+        text: "Reservation cancelled successfully."
+      });
+
+      await loadData(selectedDate);
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Cancel failed."
+      });
+    }
+  };
 
   const selectedDayReservations = reservations.filter((reservation) => {
     return String(reservation.courtId) === String(selectedCourtId);
   });
+
+  const renderReservationList = (items, emptyTitle, emptyText) => {
+    if (items.length === 0) {
+      return (
+        <div className="empty-state compact-empty">
+          <h3>{emptyTitle}</h3>
+          <p>{emptyText}</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="list">
+        {items.map((reservation) => {
+          const acceptedRequest = reservation.matchPost?.requests?.find(
+            (request) => request.status === "ACCEPTED"
+          );
+
+          return (
+            <div key={reservation.id} className="list-item">
+              <div className="card-top">
+                <h3>{reservation.court.name}</h3>
+                <span className={`badge ${reservation.status.toLowerCase()}`}>
+                  {reservation.status}
+                </span>
+              </div>
+
+              <p>
+                {formatDateTime(reservation.startTime)} -{" "}
+                {new Date(reservation.endTime).toLocaleTimeString("tr-TR", {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                })}
+              </p>
+
+              <small>{reservation.type}</small>
+
+              {reservation.matchPost && (
+                <div className="linked-match-card">
+                  <span>Linked match post</span>
+                  <strong>{reservation.matchPost.title}</strong>
+                  <small>Status: {reservation.matchPost.status}</small>
+
+                  {acceptedRequest && (
+                    <small>
+                      Matched with: {acceptedRequest.requester.fullName}
+                    </small>
+                  )}
+
+                  <Link to="/matches" className="inline-link">
+                    View in Matches →
+                  </Link>
+                </div>
+              )}
+
+              {reservation.status !== "CANCELLED" &&
+                new Date(reservation.endTime) >= new Date() && (
+                  <button
+                    className="secondary-button"
+                    onClick={() => handleCancel(reservation.id)}
+                  >
+                    Cancel reservation
+                  </button>
+                )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <section className="page">
@@ -269,12 +401,15 @@ const ReservationsPage = () => {
           <p className="eyebrow">Slot-based booking</p>
           <h2>Reserve your court with confidence</h2>
           <p>
-            Pick a date, choose a court and select one of the available time
-            slots. Lessons and existing reservations are automatically blocked.
+            Choose a court, select your time and decide whether you already have
+            a partner or want the system to publish a partner-search post.
           </p>
         </div>
 
-
+        <div className="banner-metric">
+          <span>Upcoming</span>
+          <strong>{upcomingReservations.length}</strong>
+        </div>
       </div>
 
       {message.text && (
@@ -386,7 +521,45 @@ const ReservationsPage = () => {
             </div>
           </div>
 
-          <label>Note</label>
+          {reservationType === "LOOKING_FOR_PARTNER" && (
+            <div className="partner-search-panel">
+              <div>
+                <p className="eyebrow">Partner search post</p>
+                <h3>Publish to Matches automatically</h3>
+                <p>
+                  This reservation will also create an open match post so other
+                  students can request to join.
+                </p>
+              </div>
+
+              <label>Match title</label>
+              <input
+                value={matchTitle}
+                placeholder="Looking for a beginner-friendly partner"
+                onChange={(event) => setMatchTitle(event.target.value)}
+              />
+
+              <label>Preferred partner level</label>
+              <select
+                value={preferredLevel}
+                onChange={(event) => setPreferredLevel(event.target.value)}
+              >
+                <option value="BEGINNER">Beginner</option>
+                <option value="BEGINNER_PLUS">Beginner+</option>
+                <option value="INTERMEDIATE">Intermediate</option>
+                <option value="ADVANCED">Advanced</option>
+              </select>
+
+              <label>Message to potential partner</label>
+              <textarea
+                value={matchDescription}
+                placeholder="Tell others what kind of session you want..."
+                onChange={(event) => setMatchDescription(event.target.value)}
+              />
+            </div>
+          )}
+
+          <label>Reservation note</label>
           <textarea
             placeholder="Optional note about your session..."
             value={note}
@@ -394,8 +567,8 @@ const ReservationsPage = () => {
           />
 
           <p className="helper-text">
-            Tip: use “Looking for partner” if you plan to create a match post or
-            want to connect with another student later.
+            Students can create up to 2 active reservations per week. Partner
+            search is limited to 1 active post per week.
           </p>
         </div>
 
@@ -461,57 +634,108 @@ const ReservationsPage = () => {
             </div>
 
             <button onClick={handleCreate} disabled={!selectedSlot}>
-              Confirm reservation
+              {reservationType === "LOOKING_FOR_PARTNER"
+                ? "Reserve and publish match"
+                : "Confirm reservation"}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="section-card">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Selected court day</p>
-            <h2>{selectedCourt?.name || "Court"} overview</h2>
+      <div className="two-column dashboard-columns">
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Yours</p>
+              <h2>Upcoming reservations</h2>
+            </div>
           </div>
 
-          <button
-            className="secondary-button"
-            onClick={() => loadData(selectedDate)}
-          >
-            Refresh
-          </button>
+          {renderReservationList(
+            upcomingReservations,
+            "No upcoming reservations",
+            "Your active upcoming bookings will appear here."
+          )}
         </div>
 
-        {blockedItems.length === 0 ? (
-          <div className="empty-state compact-empty">
-            <h3>This day is open</h3>
-            <p>No active reservations or lessons are blocking this court.</p>
-          </div>
-        ) : (
-          <div className="list">
-            {blockedItems.map((item) => (
-              <div key={item.id} className="list-item horizontal reservation-row">
-                <div>
-                  <h3>{item.type}</h3>
-                  <p>{item.title}</p>
-                </div>
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Selected court day</p>
+              <h2>{selectedCourt?.name || "Court"} overview</h2>
+            </div>
 
-                <div className="reservation-meta">
-                  <small>
-                    {formatHour(item.startTime)} - {formatHour(item.endTime)}
-                  </small>
-                  <span className="badge confirmed">Blocked</span>
-                </div>
-              </div>
-            ))}
+            <button
+              className="secondary-button"
+              onClick={() => loadData(selectedDate)}
+            >
+              Refresh
+            </button>
           </div>
-        )}
 
-        {selectedDayReservations.length > 0 && (
-          <div className="micro-note">
-            Showing active reservations for the selected court and selected day.
+          {blockedItems.length === 0 ? (
+            <div className="empty-state compact-empty">
+              <h3>This day is open</h3>
+              <p>No active reservations or lessons are blocking this court.</p>
+            </div>
+          ) : (
+            <div className="list">
+              {blockedItems.map((item) => (
+                <div key={item.id} className="list-item horizontal reservation-row">
+                  <div>
+                    <h3>{item.type}</h3>
+                    <p>{item.title}</p>
+                  </div>
+
+                  <div className="reservation-meta">
+                    <small>
+                      {formatHour(item.startTime)} - {formatHour(item.endTime)}
+                    </small>
+                    <span className="badge confirmed">Blocked</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selectedDayReservations.length > 0 && (
+            <div className="micro-note">
+              Showing active reservations for the selected court and selected day.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="two-column dashboard-columns">
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">History</p>
+              <h2>Past reservations</h2>
+            </div>
           </div>
-        )}
+
+          {renderReservationList(
+            pastReservations,
+            "No past reservations",
+            "Completed or past sessions will appear here."
+          )}
+        </div>
+
+        <div className="section-card">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Cancelled</p>
+              <h2>Cancelled reservations</h2>
+            </div>
+          </div>
+
+          {renderReservationList(
+            cancelledReservations,
+            "No cancelled reservations",
+            "Cancelled bookings will appear here."
+          )}
+        </div>
       </div>
     </section>
   );

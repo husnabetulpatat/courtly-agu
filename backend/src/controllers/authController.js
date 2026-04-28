@@ -150,24 +150,41 @@ const getMe = async (req, res) => {
   });
 };
 
-const updateProfile = async (req, res) => {
+const updateMe = async (req, res) => {
   try {
-    const { hasRacket } = req.body;
+    const { fullName, tennisLevel, hasRacket, bio } = req.body;
 
     const updatedUser = await prisma.user.update({
-      where: { id: req.user.id },
+      where: {
+        id: req.user.id
+      },
       data: {
-        hasRacket: Boolean(hasRacket)
+        ...(fullName !== undefined && { fullName }),
+        ...(tennisLevel !== undefined && { tennisLevel }),
+        ...(hasRacket !== undefined && { hasRacket: Boolean(hasRacket) }),
+        ...(bio !== undefined && { bio: bio || null })
+      },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        role: true,
+        tennisLevel: true,
+        hasRacket: true,
+        bio: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true
       }
     });
 
     return res.json({
       message: "Profile updated successfully",
-      user: cleanUser(updatedUser)
+      user: updatedUser
     });
   } catch (error) {
     return res.status(500).json({
-      message: "Profile update failed"
+      message: "Could not update profile"
     });
   }
 };
@@ -176,5 +193,5 @@ module.exports = {
   register,
   login,
   getMe,
-  updateProfile
+  updateMe
 };

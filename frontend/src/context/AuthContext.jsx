@@ -7,10 +7,10 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
 
-  const token = localStorage.getItem("agu_tennis_token");
-
   const loadMe = async () => {
     try {
+      const token = localStorage.getItem("agu_tennis_token");
+
       if (!token) {
         setUser(null);
         return;
@@ -51,6 +51,13 @@ export const AuthProvider = ({ children }) => {
     return response.data.user;
   };
 
+  const updateProfile = async (formData) => {
+    const response = await api.patch("/auth/me", formData);
+    setUser(response.data.user);
+
+    return response.data.user;
+  };
+
   const logout = () => {
     localStorage.removeItem("agu_tennis_token");
     setUser(null);
@@ -63,8 +70,8 @@ export const AuthProvider = ({ children }) => {
         loadingAuth,
         login,
         register,
+        updateProfile,
         logout,
-        updateUser: setUser,
         isAuthenticated: Boolean(user),
         isAdmin: user?.role === "ADMIN" || user?.role === "COACH"
       }}

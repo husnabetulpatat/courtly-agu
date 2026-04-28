@@ -6,13 +6,11 @@ const parseDate = (value) => {
 };
 
 const getStartOfDay = (dateText) => {
-  const date = new Date(`${dateText}T00:00:00`);
-  return date;
+  return new Date(`${dateText}T00:00:00`);
 };
 
 const getEndOfDay = (dateText) => {
-  const date = new Date(`${dateText}T23:59:59`);
-  return date;
+  return new Date(`${dateText}T23:59:59`);
 };
 
 const getWeekRange = (date) => {
@@ -102,7 +100,23 @@ const getReservations = async (req, res) => {
             hasRacket: true
           }
         },
-        matchPost: true
+        matchPost: {
+          include: {
+            requests: {
+              include: {
+                requester: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    tennisLevel: true,
+                    hasRacket: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: {
         startTime: "asc"
@@ -127,7 +141,24 @@ const getMyReservations = async (req, res) => {
       },
       include: {
         court: true,
-        matchPost: true
+        matchPost: {
+          include: {
+            requests: {
+              include: {
+                requester: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    tennisLevel: true,
+                    hasRacket: true,
+                    bio: true
+                  }
+                }
+              }
+            }
+          }
+        }
       },
       orderBy: {
         startTime: "asc"
@@ -146,11 +177,32 @@ const getMyReservations = async (req, res) => {
 
 const createReservation = async (req, res) => {
   try {
-    const { courtId, startTime, endTime, type, note } = req.body;
+    const {
+      courtId,
+      startTime,
+      endTime,
+      type,
+      note,
+      matchTitle,
+      matchDescription,
+      preferredLevel
+    } = req.body;
 
     if (!courtId || !startTime || !endTime) {
       return res.status(400).json({
         message: "Court, start time and end time are required"
+      });
+    }
+
+    const reservationType = type || "WITH_PARTNER";
+
+    if (
+      !["WITH_PARTNER", "LOOKING_FOR_PARTNER", "SOLO_PRACTICE"].includes(
+        reservationType
+      )
+    ) {
+      return res.status(400).json({
+        message: "Invalid reservation type"
       });
     }
 
@@ -216,38 +268,138 @@ const createReservation = async (req, res) => {
       }
     });
 
-    if (weeklyReservationCount >= 3 && req.user.role === "STUDENT") {
+    if (req.user.role === "STUDENT" && weeklyReservationCount >= 2) {
       return res.status(400).json({
-        message: "Weekly reservation limit reached"
+        message: "Weekly reservation limit reached. You can create up to 2 active reservations per week."
       });
     }
 
-    const reservation = await prisma.reservation.create({
-      data: {
-        courtId: Number(courtId),
+    const sameDayReservationCount = await prisma.reservation.count({
+      where: {
         userId: req.user.id,
-        startTime: parsedStart,
-        endTime: parsedEnd,
-        type: type || "WITH_PARTNER",
-        status: "CONFIRMED",
-        note: note || null
-      },
-      include: {
-        court: true,
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
-            tennisLevel: true
-          }
+        status: {
+          in: ["PENDING", "CONFIRMED"]
+        },
+        startTime: {
+          gte: getStartOfDay(parsedStart.toISOString().split("T")[0]),
+          lte: getEndOfDay(parsedStart.toISOString().split("T")[0])
         }
       }
     });
 
+    if (req.user.role === "STUDENT" && sameDayReservationCount >= 1) {
+      return res.status(400).json({
+        message: "Daily reservation limit reached. You can create only 1 active reservation per day."
+      });
+    }
+
+    if (reservationType === "LOOKING_FOR_PARTNER") {
+      const weeklyPartnerSearchCount = await prisma.matchPost.count({
+        where: {
+          creatorId: req.user.id,
+          status: {
+            in: ["OPEN", "MATCHED"]
+          },
+          startTime: {
+            gte: weekRange.start,
+            lt: weekRange.end
+          }
+        }
+      });
+
+      if (req.user.role === "STUDENT" && weeklyPartnerSearchCount >= 1) {
+        return res.status(400).json({
+          message: "Weekly partner search limit reached. You can create 1 active partner-search match per week."
+        });
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const reservation = await tx.reservation.create({
+        data: {
+          courtId: Number(courtId),
+          userId: req.user.id,
+          startTime: parsedStart,
+          endTime: parsedEnd,
+          type: reservationType,
+          status: "CONFIRMED",
+          note: note || null
+        },
+        include: {
+          court: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              tennisLevel: true,
+              hasRacket: true
+            }
+          }
+        }
+      });
+
+      let createdMatchPost = null;
+
+      if (reservationType === "LOOKING_FOR_PARTNER") {
+        createdMatchPost = await tx.matchPost.create({
+          data: {
+            creatorId: req.user.id,
+            courtId: Number(courtId),
+            reservationId: reservation.id,
+            title:
+              matchTitle ||
+              `Looking for a ${preferredLevel || req.user.tennisLevel} tennis partner`,
+            description: matchDescription || note || null,
+            preferredLevel: preferredLevel || req.user.tennisLevel || "BEGINNER",
+            startTime: parsedStart,
+            endTime: parsedEnd,
+            status: "OPEN"
+          },
+          include: {
+            court: true,
+            reservation: true,
+            creator: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                tennisLevel: true,
+                hasRacket: true,
+                bio: true
+              }
+            },
+            requests: {
+              include: {
+                requester: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    tennisLevel: true,
+                    hasRacket: true,
+                    bio: true
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      return {
+        reservation,
+        matchPost: createdMatchPost
+      };
+    });
+
     return res.status(201).json({
-      message: "Reservation created successfully",
-      reservation
+      message:
+        reservationType === "LOOKING_FOR_PARTNER"
+          ? "Reservation created and partner-search match post published successfully."
+          : "Reservation created successfully.",
+      reservation: result.reservation,
+      matchPost: result.matchPost
     });
   } catch (error) {
     return res.status(500).json({
@@ -259,13 +411,18 @@ const createReservation = async (req, res) => {
 const cancelReservation = async (req, res) => {
   try {
     const { id } = req.params;
+    const { reason } = req.body;
 
     const reservation = await prisma.reservation.findUnique({
       where: {
         id: Number(id)
       },
       include: {
-        matchPost: true
+        matchPost: {
+          include: {
+            requests: true
+          }
+        }
       }
     });
 
@@ -284,29 +441,78 @@ const cancelReservation = async (req, res) => {
       });
     }
 
-    const updatedReservation = await prisma.reservation.update({
-      where: {
-        id: Number(id)
-      },
-      data: {
-        status: "CANCELLED"
-      }
-    });
-
-    if (reservation.matchPost) {
-      await prisma.matchPost.update({
-        where: {
-          id: reservation.matchPost.id
-        },
-        data: {
-          status: "CANCELLED"
-        }
+    if (reservation.status === "CANCELLED") {
+      return res.status(400).json({
+        message: "This reservation is already cancelled"
       });
     }
 
+    const cleanReason =
+      reason && reason.trim().length > 0
+        ? reason.trim()
+        : "The reservation owner cancelled this session.";
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedReservation = await tx.reservation.update({
+        where: {
+          id: Number(id)
+        },
+        data: {
+          status: "CANCELLED"
+        },
+        include: {
+          court: true,
+          matchPost: {
+            include: {
+              requests: true
+            }
+          }
+        }
+      });
+
+      if (reservation.matchPost) {
+        const acceptedRequest = reservation.matchPost.requests.find(
+          (request) => request.status === "ACCEPTED"
+        );
+
+        await tx.matchPost.update({
+          where: {
+            id: reservation.matchPost.id
+          },
+          data: {
+            status: "CANCELLED"
+          }
+        });
+
+        await tx.matchRequest.updateMany({
+          where: {
+            matchPostId: reservation.matchPost.id,
+            status: "PENDING"
+          },
+          data: {
+            status: "CANCELLED"
+          }
+        });
+
+        if (acceptedRequest) {
+          await tx.message.create({
+            data: {
+              matchPostId: reservation.matchPost.id,
+              senderId: req.user.id,
+              content: `Reservation and match cancelled. Note from ${req.user.fullName}: ${cleanReason}`
+            }
+          });
+        }
+      }
+
+      return updatedReservation;
+    });
+
     return res.json({
-      message: "Reservation cancelled successfully",
-      reservation: updatedReservation
+      message: reservation.matchPost
+        ? "Reservation cancelled and linked match post updated successfully."
+        : "Reservation cancelled successfully.",
+      reservation: result
     });
   } catch (error) {
     return res.status(500).json({
@@ -320,24 +526,153 @@ const updateReservationStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!status) {
+    const allowedStatuses = [
+      "PENDING",
+      "CONFIRMED",
+      "CANCELLED",
+      "COMPLETED",
+      "NO_SHOW"
+    ];
+
+    if (!status || !allowedStatuses.includes(status)) {
       return res.status(400).json({
-        message: "Status is required"
+        message: "Valid status is required"
       });
     }
 
-    const reservation = await prisma.reservation.update({
+    const reservation = await prisma.reservation.findUnique({
       where: {
         id: Number(id)
       },
-      data: {
-        status
+      include: {
+        matchPost: {
+          include: {
+            requests: true
+          }
+        }
       }
+    });
+
+    if (!reservation) {
+      return res.status(404).json({
+        message: "Reservation not found"
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedReservation = await tx.reservation.update({
+        where: {
+          id: Number(id)
+        },
+        data: {
+          status
+        },
+        include: {
+          court: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+              tennisLevel: true,
+              hasRacket: true
+            }
+          },
+          matchPost: {
+            include: {
+              requests: {
+                include: {
+                  requester: {
+                    select: {
+                      id: true,
+                      fullName: true,
+                      email: true,
+                      tennisLevel: true,
+                      hasRacket: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (reservation.matchPost) {
+        if (status === "CANCELLED") {
+          const acceptedRequest = reservation.matchPost.requests.find(
+            (request) => request.status === "ACCEPTED"
+          );
+
+          await tx.matchPost.update({
+            where: {
+              id: reservation.matchPost.id
+            },
+            data: {
+              status: "CANCELLED"
+            }
+          });
+
+          await tx.matchRequest.updateMany({
+            where: {
+              matchPostId: reservation.matchPost.id,
+              status: "PENDING"
+            },
+            data: {
+              status: "CANCELLED"
+            }
+          });
+
+          if (acceptedRequest) {
+            await tx.message.create({
+              data: {
+                matchPostId: reservation.matchPost.id,
+                senderId: req.user.id,
+                content: `Reservation and linked match were cancelled by admin.`
+              }
+            });
+          }
+        }
+
+        if (status === "COMPLETED") {
+          await tx.matchPost.update({
+            where: {
+              id: reservation.matchPost.id
+            },
+            data: {
+              status: "COMPLETED"
+            }
+          });
+        }
+
+        if (status === "NO_SHOW") {
+          await tx.matchPost.update({
+            where: {
+              id: reservation.matchPost.id
+            },
+            data: {
+              status: "CANCELLED"
+            }
+          });
+
+          await tx.matchRequest.updateMany({
+            where: {
+              matchPostId: reservation.matchPost.id,
+              status: "PENDING"
+            },
+            data: {
+              status: "CANCELLED"
+            }
+          });
+        }
+      }
+
+      return updatedReservation;
     });
 
     return res.json({
       message: "Reservation status updated successfully",
-      reservation
+      reservation: result
     });
   } catch (error) {
     return res.status(500).json({

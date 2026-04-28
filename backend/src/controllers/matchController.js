@@ -5,6 +5,23 @@ const parseDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const getWeekRange = (date) => {
+  const start = new Date(date);
+  const day = start.getDay();
+  const diff = start.getDate() - day + (day === 0 ? -6 : 1);
+
+  start.setDate(diff);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  return {
+    start,
+    end
+  };
+};
+
 const checkCourtConflict = async (courtId, startTime, endTime) => {
   const reservationConflict = await prisma.reservation.findFirst({
     where: {
@@ -65,7 +82,20 @@ const getMatchPosts = async (req, res) => {
           }
         },
         court: true,
-        requests: true
+        requests: {
+          include: {
+            requester: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                tennisLevel: true,
+                hasRacket: true,
+                bio: true
+              }
+            }
+          }
+        }
       },
       orderBy: {
         startTime: "asc"
@@ -121,6 +151,58 @@ const getMyMatchPosts = async (req, res) => {
   }
 };
 
+const getMyMatchRequests = async (req, res) => {
+  try {
+    const requests = await prisma.matchRequest.findMany({
+      where: {
+        requesterId: req.user.id
+      },
+      include: {
+        matchPost: {
+          include: {
+            court: true,
+            creator: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true,
+                tennisLevel: true,
+                hasRacket: true,
+                bio: true
+              }
+            },
+            requests: {
+              include: {
+                requester: {
+                  select: {
+                    id: true,
+                    fullName: true,
+                    email: true,
+                    tennisLevel: true,
+                    hasRacket: true,
+                    bio: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: "desc"
+      }
+    });
+
+    return res.json({
+      requests
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Could not fetch your match requests"
+    });
+  }
+};
+
 const createMatchPost = async (req, res) => {
   try {
     const {
@@ -153,6 +235,14 @@ const createMatchPost = async (req, res) => {
       });
     }
 
+    const durationMinutes = (parsedEnd - parsedStart) / 1000 / 60;
+
+    if (durationMinutes < 30 || durationMinutes > 120) {
+      return res.status(400).json({
+        message: "Match duration must be between 30 and 120 minutes"
+      });
+    }
+
     const court = await prisma.court.findUnique({
       where: {
         id: Number(courtId)
@@ -162,6 +252,27 @@ const createMatchPost = async (req, res) => {
     if (!court || court.status !== "ACTIVE") {
       return res.status(400).json({
         message: "Court is not available"
+      });
+    }
+
+    const weekRange = getWeekRange(parsedStart);
+
+    const weeklyActiveMatchCount = await prisma.matchPost.count({
+      where: {
+        creatorId: req.user.id,
+        status: {
+          in: ["OPEN", "MATCHED"]
+        },
+        startTime: {
+          gte: weekRange.start,
+          lt: weekRange.end
+        }
+      }
+    });
+
+    if (req.user.role === "STUDENT" && weeklyActiveMatchCount >= 2) {
+      return res.status(400).json({
+        message: "Weekly active match post limit reached. You can create up to 2 active matches per week."
       });
     }
 
@@ -213,6 +324,20 @@ const createMatchPost = async (req, res) => {
               tennisLevel: true,
               hasRacket: true
             }
+          },
+          requests: {
+            include: {
+              requester: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  tennisLevel: true,
+                  hasRacket: true,
+                  bio: true
+                }
+              }
+            }
           }
         }
       });
@@ -227,6 +352,136 @@ const createMatchPost = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       message: "Could not create match post"
+    });
+  }
+};
+
+const cancelMatchPost = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const matchPost = await prisma.matchPost.findUnique({
+      where: {
+        id: Number(id)
+      },
+      include: {
+        reservation: true,
+        requests: {
+          include: {
+            requester: {
+              select: {
+                id: true,
+                fullName: true,
+                email: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!matchPost) {
+      return res.status(404).json({
+        message: "Match post not found"
+      });
+    }
+
+    const isOwner = matchPost.creatorId === req.user.id;
+    const isAdmin = ["ADMIN", "COACH"].includes(req.user.role);
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({
+        message: "You cannot cancel this match"
+      });
+    }
+
+    if (matchPost.status === "CANCELLED") {
+      return res.status(400).json({
+        message: "This match is already cancelled"
+      });
+    }
+
+    const acceptedRequest = matchPost.requests.find(
+      (request) => request.status === "ACCEPTED"
+    );
+
+    const cleanReason =
+      reason && reason.trim().length > 0
+        ? reason.trim()
+        : "The match owner cancelled this match.";
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedMatchPost = await tx.matchPost.update({
+        where: {
+          id: Number(id)
+        },
+        data: {
+          status: "CANCELLED"
+        },
+        include: {
+          court: true,
+          reservation: true,
+          requests: {
+            include: {
+              requester: {
+                select: {
+                  id: true,
+                  fullName: true,
+                  email: true,
+                  tennisLevel: true,
+                  hasRacket: true,
+                  bio: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (matchPost.reservationId) {
+        await tx.reservation.update({
+          where: {
+            id: matchPost.reservationId
+          },
+          data: {
+            status: "CANCELLED"
+          }
+        });
+      }
+
+      await tx.matchRequest.updateMany({
+        where: {
+          matchPostId: Number(id),
+          status: "PENDING"
+        },
+        data: {
+          status: "CANCELLED"
+        }
+      });
+
+      if (acceptedRequest) {
+        await tx.message.create({
+          data: {
+            matchPostId: Number(id),
+            senderId: req.user.id,
+            content: `Match cancelled. Note from ${req.user.fullName}: ${cleanReason}`
+          }
+        });
+      }
+
+      return updatedMatchPost;
+    });
+
+    return res.json({
+      message: acceptedRequest
+        ? "Match cancelled and the accepted partner has been notified in chat."
+        : "Match cancelled successfully.",
+      matchPost: result
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: "Could not cancel match"
     });
   }
 };
@@ -383,6 +638,12 @@ const updateMatchRequestStatus = async (req, res) => {
       });
     }
 
+    if (request.matchPost.status !== "OPEN" && status === "ACCEPTED") {
+      return res.status(400).json({
+        message: "Only open matches can accept requests"
+      });
+    }
+
     const isOwner = request.matchPost.creatorId === req.user.id;
     const isRequester = request.requesterId === req.user.id;
 
@@ -442,6 +703,14 @@ const updateMatchRequestStatus = async (req, res) => {
             status: "REJECTED"
           }
         });
+
+        await tx.message.create({
+          data: {
+            matchPostId: request.matchPostId,
+            senderId: req.user.id,
+            content: `Match confirmed. ${updatedRequest.requester.fullName} has been accepted as the partner.`
+          }
+        });
       }
 
       return updatedRequest;
@@ -479,7 +748,8 @@ const getMessages = async (req, res) => {
 
     const isCreator = matchPost.creatorId === req.user.id;
     const isAcceptedRequester = matchPost.requests.some(
-      (request) => request.requesterId === req.user.id && request.status === "ACCEPTED"
+      (request) =>
+        request.requesterId === req.user.id && request.status === "ACCEPTED"
     );
 
     if (!isCreator && !isAcceptedRequester) {
@@ -544,7 +814,8 @@ const sendMessage = async (req, res) => {
 
     const isCreator = matchPost.creatorId === req.user.id;
     const isAcceptedRequester = matchPost.requests.some(
-      (request) => request.requesterId === req.user.id && request.status === "ACCEPTED"
+      (request) =>
+        request.requesterId === req.user.id && request.status === "ACCEPTED"
     );
 
     if (!isCreator && !isAcceptedRequester) {
@@ -584,7 +855,9 @@ const sendMessage = async (req, res) => {
 module.exports = {
   getMatchPosts,
   getMyMatchPosts,
+  getMyMatchRequests,
   createMatchPost,
+  cancelMatchPost,
   requestToJoinMatch,
   getMatchRequests,
   updateMatchRequestStatus,

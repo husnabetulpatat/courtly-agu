@@ -1,40 +1,9 @@
-import { useState } from "react";
-import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
-import api from "../api/api";
+import { useAuth } from "../context/AuthContext";
 
 const SettingsPage = () => {
-  const { user, updateUser } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-
-  const [hasRacket, setHasRacket] = useState(Boolean(user?.hasRacket));
-  const [message, setMessage] = useState({ type: "", text: "" });
-  const [saving, setSaving] = useState(false);
-
-  const handleSaveProfile = async () => {
-    try {
-      setSaving(true);
-      setMessage({ type: "", text: "" });
-
-      const response = await api.patch("/auth/profile", {
-        hasRacket
-      });
-
-      updateUser(response.data.user);
-
-      setMessage({
-        type: "success",
-        text: "Profile updated successfully."
-      });
-    } catch (error) {
-      setMessage({
-        type: "error",
-        text: error.response?.data?.message || "Failed to update profile."
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const { user } = useAuth();
+  const { themePreference, appliedTheme, changeTheme } = useTheme();
 
   return (
     <section className="page">
@@ -43,76 +12,144 @@ const SettingsPage = () => {
           <p className="eyebrow">Preferences</p>
           <h2>Settings</h2>
           <p>
-            Manage your interface theme and update your tennis profile details.
+            Customize your Courtly AGÜ experience. Theme preferences are saved on
+            this device.
           </p>
+        </div>
+
+        <div className="banner-metric">
+          <span>Theme</span>
+          <strong>{appliedTheme}</strong>
         </div>
       </div>
 
-      {message.text && (
-        <div className={`alert ${message.type === "error" ? "error" : ""}`}>
-          {message.text}
-        </div>
-      )}
-
-      <div className="two-column dashboard-columns">
+      <div className="two-column settings-layout">
         <div className="section-card">
           <div className="section-heading">
             <div>
               <p className="eyebrow">Appearance</p>
-              <h2>Interface Theme</h2>
+              <h2>Theme mode</h2>
             </div>
           </div>
 
-          <div className="list">
-            <div className="list-item horizontal">
-              <div>
-                <h3>Dark Mode</h3>
-                <p>Toggle between light and dark interface.</p>
-              </div>
+          <div className="theme-option-grid">
+            <button
+              type="button"
+              className={`theme-option-card ${
+                themePreference === "light" ? "theme-option-active" : ""
+              }`}
+              onClick={() => changeTheme("light")}
+            >
+              <span className="theme-icon">☀️</span>
+              <strong>Light</strong>
+              <small>Clean premium default theme.</small>
+            </button>
 
-              <div>
-                <button
-                  className={theme === "dark" ? "segment-active" : "secondary-button"}
-                  onClick={toggleTheme}
-                >
-                  {theme === "dark" ? "Dark Mode Active" : "Enable Dark Mode"}
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              className={`theme-option-card ${
+                themePreference === "dark" ? "theme-option-active" : ""
+              }`}
+              onClick={() => changeTheme("dark")}
+            >
+              <span className="theme-icon">🌙</span>
+              <strong>Dark</strong>
+              <small>Low-light mode for evening use.</small>
+            </button>
+
+            <button
+              type="button"
+              className={`theme-option-card ${
+                themePreference === "system" ? "theme-option-active" : ""
+              }`}
+              onClick={() => changeTheme("system")}
+            >
+              <span className="theme-icon">💻</span>
+              <strong>System</strong>
+              <small>Follows your device preference.</small>
+            </button>
           </div>
+
+          <p className="helper-text">
+            Light mode stays as the default because it currently gives the
+            strongest premium product feeling. Dark mode is optional and
+            controlled from here.
+          </p>
         </div>
 
         <div className="section-card">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Profile</p>
-              <h2>Tennis Equipment</h2>
+              <p className="eyebrow">Account</p>
+              <h2>Current session</h2>
             </div>
           </div>
 
-          <div className="form premium-form-card" style={{ gap: '14px' }}>
-            <div className="inline-form-row" style={{ gridTemplateColumns: '1fr', gap: '8px' }}>
-               <label>Do you have a tennis racket?</label>
-               <select
-                 value={hasRacket ? "true" : "false"}
-                 onChange={(e) => setHasRacket(e.target.value === "true")}
-               >
-                 <option value="true">Yes, I have a racket</option>
-                 <option value="false">No, I need one</option>
-               </select>
+          <div className="profile-preview-card">
+            <div className="profile-avatar-large small-preview-avatar">
+              {user?.fullName?.charAt(0)?.toUpperCase() || "A"}
             </div>
 
-            <p className="helper-text">
-              This helps other players know if you can bring a racket to matches.
-            </p>
+            <div>
+              <h3>{user?.fullName}</h3>
+              <p>{user?.email}</p>
+            </div>
+          </div>
 
-            <button
-              onClick={handleSaveProfile}
-              disabled={saving}
-              style={{ alignSelf: "flex-start", marginTop: "10px" }}
-            >
-              {saving ? "Saving..." : "Save Profile"}
-            </button>
+          <div className="details-box">
+            <div className="detail-row">
+              <span>Role</span>
+              <strong>{user?.role}</strong>
+            </div>
+            <div className="detail-row">
+              <span>Tennis level</span>
+              <strong>{user?.tennisLevel}</strong>
+            </div>
+            <div className="detail-row">
+              <span>Racket status</span>
+              <strong>{user?.hasRacket ? "Has racket" : "May need racket"}</strong>
+            </div>
+            <div className="detail-row">
+              <span>Theme preference</span>
+              <strong>{themePreference}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-card">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Future settings</p>
+            <h2>Planned preferences</h2>
+          </div>
+        </div>
+
+        <div className="guidance-grid">
+          <div className="guidance-card">
+            <span>01</span>
+            <h3>Notification preferences</h3>
+            <p>
+              Reservation reminders, lesson updates and match request alerts can
+              be added here later.
+            </p>
+          </div>
+
+          <div className="guidance-card">
+            <span>02</span>
+            <h3>Privacy controls</h3>
+            <p>
+              Users may choose what profile details are visible on match posts.
+            </p>
+          </div>
+
+          <div className="guidance-card">
+            <span>03</span>
+            <h3>Equipment preferences</h3>
+            <p>
+              Racket borrowing, equipment notes and availability rules can be
+              added when the club needs them.
+            </p>
           </div>
         </div>
       </div>

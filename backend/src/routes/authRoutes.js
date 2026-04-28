@@ -3,7 +3,7 @@ const {
   register,
   login,
   getMe,
-  updateProfile
+  updateMe
 } = require("../controllers/authController");
 const { protect } = require("../middlewares/authMiddleware");
 
@@ -12,6 +12,6 @@ const router = express.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.get("/me", protect, getMe);
-router.patch("/profile", protect, updateProfile);
+router.patch("/me", protect, updateMe);
 
 module.exports = router;
