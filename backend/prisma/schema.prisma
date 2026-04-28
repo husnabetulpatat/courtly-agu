@@ -78,6 +78,12 @@ enum AnnouncementTarget {
   LESSON_PARTICIPANTS
 }
 
+enum TournamentMatchStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
 model User {
   id             Int          @id @default(autoincrement())
   fullName       String
@@ -96,6 +102,7 @@ model User {
   sentMessages   Message[]    @relation("SentMessages")
   announcements  Announcement[] @relation("CreatedAnnouncements")
   attendance     AttendanceRecord[]
+  createdTournamentMatches TournamentMatch[] @relation("TournamentMatchCreator")
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -111,6 +118,7 @@ model Court {
   reservations  Reservation[]
   lessons       Lesson[]
   matchPosts    MatchPost[]
+  tournamentMatches TournamentMatch[]
 
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -285,4 +293,23 @@ model AttendanceRecord {
   updatedAt       DateTime  @updatedAt
 
   @@unique([lessonId, userId])
+}
+
+model TournamentMatch {
+  id            Int                   @id @default(autoincrement())
+  title         String?
+  playerOneName String
+  playerTwoName String
+  courtId       Int
+  court         Court                 @relation(fields: [courtId], references: [id])
+  startTime     DateTime
+  endTime       DateTime?
+  status        TournamentMatchStatus @default(SCHEDULED)
+  score         String?
+  winnerName    String?
+  note          String?
+  createdById   Int
+  createdBy     User                  @relation("TournamentMatchCreator", fields: [createdById], references: [id])
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 }

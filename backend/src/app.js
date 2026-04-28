@@ -7,6 +7,7 @@ const reservationRoutes = require("./routes/reservationRoutes");
 const lessonRoutes = require("./routes/lessonRoutes");
 const matchRoutes = require("./routes/matchRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
+const tournamentRoutes = require("./routes/tournamentRoutes");
 
 const { notFound, errorHandler } = require("./middlewares/errorMiddleware");
 
@@ -40,7 +41,7 @@ app.use("/api/reservations", reservationRoutes);
 app.use("/api/lessons", lessonRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/announcements", announcementRoutes);
-
+app.use("/api/tournaments", tournamentRoutes);
 app.use(notFound);
 app.use(errorHandler);
 

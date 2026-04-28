@@ -15,6 +15,7 @@ const AdminPage = () => {
   const [applications, setApplications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [reservations, setReservations] = useState([]);
+  const [tournamentMatches, setTournamentMatches] = useState([]);
   const [selectedLesson, setSelectedLesson] = useState(null);
   const [reservationFilter, setReservationFilter] = useState("UPCOMING");
 
@@ -34,6 +35,17 @@ const AdminPage = () => {
     capacity: "8"
   });
 
+  const [tournamentForm, setTournamentForm] = useState({
+    title: "",
+    playerOneName: "",
+    playerTwoName: "",
+    courtId: "",
+    date: getTomorrowDateValue(),
+    startHour: "17:00",
+    duration: "60",
+    note: ""
+  });
+
   const [announcementForm, setAnnouncementForm] = useState({
     title: "",
     content: ""
@@ -41,6 +53,13 @@ const AdminPage = () => {
 
   const updateLessonField = (field, value) => {
     setLessonForm((current) => ({
+      ...current,
+      [field]: value
+    }));
+  };
+
+  const updateTournamentField = (field, value) => {
+    setTournamentForm((current) => ({
       ...current,
       [field]: value
     }));
@@ -55,21 +74,27 @@ const AdminPage = () => {
 
   const loadData = async () => {
     try {
-      const [courtsRes, lessonsRes, announcementsRes, reservationsRes] =
+      const [courtsRes, lessonsRes, announcementsRes, reservationsRes, tournamentRes] =
         await Promise.all([
           api.get("/courts"),
           api.get("/lessons"),
           api.get("/announcements/admin/all"),
-          api.get("/reservations")
+          api.get("/reservations"),
+          api.get("/tournaments")
         ]);
 
       setCourts(courtsRes.data.courts);
       setLessons(lessonsRes.data.lessons);
       setAnnouncements(announcementsRes.data.announcements);
       setReservations(reservationsRes.data.reservations);
+      setTournamentMatches(tournamentRes.data.matches);
 
       if (!lessonForm.courtId && courtsRes.data.courts.length > 0) {
         updateLessonField("courtId", String(courtsRes.data.courts[0].id));
+      }
+
+      if (!tournamentForm.courtId && courtsRes.data.courts.length > 0) {
+        updateTournamentField("courtId", String(courtsRes.data.courts[0].id));
       }
     } catch (error) {
       console.log("Admin load error", error);
@@ -352,6 +377,135 @@ const AdminPage = () => {
     }
   };
 
+  const handleCreateTournamentMatch = async (event) => {
+    event.preventDefault();
+
+    try {
+      setMessage({
+        type: "",
+        text: ""
+      });
+
+      if (
+        !tournamentForm.playerOneName.trim() ||
+        !tournamentForm.playerTwoName.trim() ||
+        !tournamentForm.date
+      ) {
+        setMessage({
+          type: "error",
+          text: "Please enter both player names and match date."
+        });
+        return;
+      }
+
+      const startTime = new Date(
+        `${tournamentForm.date}T${tournamentForm.startHour}:00`
+      );
+
+      const endTime = new Date(
+        startTime.getTime() + Number(tournamentForm.duration) * 60 * 1000
+      );
+
+      await api.post("/tournaments", {
+        title: tournamentForm.title,
+        playerOneName: tournamentForm.playerOneName,
+        playerTwoName: tournamentForm.playerTwoName,
+        courtId: Number(tournamentForm.courtId),
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        note: tournamentForm.note
+      });
+
+      setMessage({
+        type: "success",
+        text: "Tournament match created successfully."
+      });
+
+      setTournamentForm((current) => ({
+        ...current,
+        title: "",
+        playerOneName: "",
+        playerTwoName: "",
+        note: ""
+      }));
+
+      await loadData();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Tournament match creation failed."
+      });
+    }
+  };
+
+  const updateTournamentMatchStatus = async (matchId, status) => {
+    try {
+      await api.patch(`/tournaments/${matchId}`, {
+        status
+      });
+
+      setMessage({
+        type: "success",
+        text: `Tournament match marked as ${status.toLowerCase()}.`
+      });
+
+      await loadData();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Tournament update failed."
+      });
+    }
+  };
+
+  const updateTournamentScore = async (matchId, score, winnerName) => {
+    try {
+      await api.patch(`/tournaments/${matchId}`, {
+        score,
+        winnerName,
+        status: "COMPLETED"
+      });
+
+      setMessage({
+        type: "success",
+        text: "Tournament result updated successfully."
+      });
+
+      await loadData();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Score update failed."
+      });
+    }
+  };
+
+  const handleDeleteTournamentMatch = async (matchId) => {
+    try {
+      const confirmed = window.confirm(
+        "Are you sure you want to delete this tournament match?"
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      await api.delete(`/tournaments/${matchId}`);
+
+      setMessage({
+        type: "success",
+        text: "Tournament match deleted successfully."
+      });
+
+      await loadData();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error.response?.data?.message || "Tournament deletion failed."
+      });
+    }
+  };
+
   const getAcceptedCount = (lesson) => {
     return lesson.applications.filter(
       (application) => application.status === "ACCEPTED"
@@ -482,6 +636,10 @@ const AdminPage = () => {
             <span>Reservations</span>
             <strong>{reservations.length}</strong>
           </div>
+          <div className="banner-metric">
+            <span>Tournament</span>
+            <strong>{tournamentMatches.length}</strong>
+          </div>
         </div>
       </div>
 
@@ -527,6 +685,12 @@ const AdminPage = () => {
           onClick={() => setActiveTab("courts")}
         >
           Courts
+        </button>
+        <button
+          className={activeTab === "tournament" ? "admin-tab-active" : ""}
+          onClick={() => setActiveTab("tournament")}
+        >
+          Tournament
         </button>
       </div>
 
@@ -575,6 +739,15 @@ const AdminPage = () => {
             <span>05</span>
             <h3>Manage courts</h3>
             <p>Set court status as active, maintenance or closed.</p>
+          </button>
+
+          <button
+            className="admin-action-card"
+            onClick={() => setActiveTab("tournament")}
+          >
+            <span>06</span>
+            <h3>Manage tournament</h3>
+            <p>Create tournament matches, update results and manage schedule.</p>
           </button>
         </div>
       )}
@@ -1069,6 +1242,232 @@ const AdminPage = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "tournament" && (
+        <div className="two-column">
+          <form
+            onSubmit={handleCreateTournamentMatch}
+            className="section-card form premium-form-card"
+          >
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Tournament</p>
+                <h2>Create tournament match</h2>
+              </div>
+            </div>
+
+            <label>Title</label>
+            <input
+              value={tournamentForm.title}
+              placeholder="Quarter Final Match"
+              onChange={(event) =>
+                updateTournamentField("title", event.target.value)
+              }
+            />
+
+            <label>Player 1</label>
+            <input
+              value={tournamentForm.playerOneName}
+              placeholder="Player one name"
+              onChange={(event) =>
+                updateTournamentField("playerOneName", event.target.value)
+              }
+            />
+
+            <label>Player 2</label>
+            <input
+              value={tournamentForm.playerTwoName}
+              placeholder="Player two name"
+              onChange={(event) =>
+                updateTournamentField("playerTwoName", event.target.value)
+              }
+            />
+
+            <label>Court</label>
+            <select
+              value={tournamentForm.courtId}
+              onChange={(event) =>
+                updateTournamentField("courtId", event.target.value)
+              }
+            >
+              {courts.map((court) => (
+                <option key={court.id} value={court.id}>
+                  {court.name}
+                </option>
+              ))}
+            </select>
+
+            <div className="inline-form-row">
+              <div>
+                <label>Date</label>
+                <input
+                  type="date"
+                  value={tournamentForm.date}
+                  onChange={(event) =>
+                    updateTournamentField("date", event.target.value)
+                  }
+                />
+              </div>
+
+              <div>
+                <label>Start hour</label>
+                <input
+                  type="time"
+                  value={tournamentForm.startHour}
+                  onChange={(event) =>
+                    updateTournamentField("startHour", event.target.value)
+                  }
+                />
+              </div>
+            </div>
+
+            <label>Duration</label>
+            <select
+              value={tournamentForm.duration}
+              onChange={(event) =>
+                updateTournamentField("duration", event.target.value)
+              }
+            >
+              <option value="30">30 minutes</option>
+              <option value="60">60 minutes</option>
+              <option value="90">90 minutes</option>
+              <option value="120">120 minutes</option>
+            </select>
+
+            <label>Note</label>
+            <textarea
+              value={tournamentForm.note}
+              placeholder="Optional tournament note..."
+              onChange={(event) =>
+                updateTournamentField("note", event.target.value)
+              }
+            />
+
+            <button type="submit">Create tournament match</button>
+          </form>
+
+          <div className="section-card">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Schedule</p>
+                <h2>Tournament matches</h2>
+              </div>
+            </div>
+
+            {tournamentMatches.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <h3>No tournament matches yet</h3>
+                <p>Create a tournament match first.</p>
+              </div>
+            ) : (
+              <div className="list">
+                {tournamentMatches.map((match) => (
+                  <div key={match.id} className="list-item">
+                    <div className="card-top">
+                      <div>
+                        <h3>{match.title || "Tournament Match"}</h3>
+                        <p>
+                          {match.playerOneName} vs {match.playerTwoName}
+                        </p>
+                        <small>
+                          {match.court.name} / {formatDate(match.startTime)}
+                        </small>
+                      </div>
+
+                      <span className={`badge ${match.status.toLowerCase()}`}>
+                        {match.status}
+                      </span>
+                    </div>
+
+                    <div className="details-box">
+                      <div className="detail-row">
+                        <span>Score</span>
+                        <strong>{match.score || "Not entered"}</strong>
+                      </div>
+
+                      <div className="detail-row">
+                        <span>Winner</span>
+                        <strong>{match.winnerName || "Not selected"}</strong>
+                      </div>
+                    </div>
+
+                    <div className="score-update-box">
+                      <input
+                        placeholder="Score e.g. 6-4, 6-3"
+                        onBlur={(event) => {
+                          const score = event.target.value;
+                          if (score.trim()) {
+                            updateTournamentScore(
+                              match.id,
+                              score,
+                              match.winnerName || ""
+                            );
+                          }
+                        }}
+                      />
+
+                      <select
+                        defaultValue={match.winnerName || ""}
+                        onChange={(event) => {
+                          updateTournamentScore(
+                            match.id,
+                            match.score || "",
+                            event.target.value
+                          );
+                        }}
+                      >
+                        <option value="">Select winner</option>
+                        <option value={match.playerOneName}>
+                          {match.playerOneName}
+                        </option>
+                        <option value={match.playerTwoName}>
+                          {match.playerTwoName}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div className="button-row wrap">
+                      <button
+                        className="secondary-button"
+                        onClick={() =>
+                          updateTournamentMatchStatus(match.id, "SCHEDULED")
+                        }
+                      >
+                        Scheduled
+                      </button>
+
+                      <button
+                        className="secondary-button"
+                        onClick={() =>
+                          updateTournamentMatchStatus(match.id, "COMPLETED")
+                        }
+                      >
+                        Completed
+                      </button>
+
+                      <button
+                        className="secondary-button"
+                        onClick={() =>
+                          updateTournamentMatchStatus(match.id, "CANCELLED")
+                        }
+                      >
+                        Cancelled
+                      </button>
+
+                      <button
+                        className="danger-button"
+                        onClick={() => handleDeleteTournamentMatch(match.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

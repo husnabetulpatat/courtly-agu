@@ -18,6 +18,10 @@ const pageMeta = {
     title: "Matches",
     subtitle: "Find tennis partners at your level and manage partner searches."
   },
+  "/tournament": {
+    title: "Tournament",
+    subtitle: "Follow tournament matches, court assignments and results."
+  },
   "/courts": {
     title: "Courts",
     subtitle: "Explore available campus courts and their current status."
@@ -32,7 +36,7 @@ const pageMeta = {
   },
   "/admin": {
     title: "Admin Panel",
-    subtitle: "Manage lessons, applications, courts and announcements."
+    subtitle: "Manage reservations, lessons, tournaments, announcements and courts."
   }
 };
 
@@ -70,18 +74,12 @@ const Layout = () => {
             <NavLink to="/reservations">Reserve Court</NavLink>
             <NavLink to="/lessons">Lessons</NavLink>
             <NavLink to="/matches">Matches</NavLink>
+            <NavLink to="/tournament">Tournament</NavLink>
             <NavLink to="/courts">Courts</NavLink>
             <NavLink to="/profile">Profile</NavLink>
             <NavLink to="/settings">Settings</NavLink>
             {isAdmin && <NavLink to="/admin">Admin</NavLink>}
           </nav>
-
-          <div className="sidebar-note">
-            <p className="sidebar-note-title">Fair court usage</p>
-            <small>
-              Reserve courts, join lessons and connect with players at your level.
-            </small>
-          </div>
 
           <div className="sidebar-footer">
             <div className="sidebar-footer-info">

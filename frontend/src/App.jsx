@@ -14,6 +14,7 @@ import MatchesPage from "./pages/MatchesPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
+import TournamentPage from "./pages/TournamentPage";
 
 const App = () => {
   return (
@@ -36,6 +37,7 @@ const App = () => {
               <Route path="reservations" element={<ReservationsPage />} />
               <Route path="lessons" element={<LessonsPage />} />
               <Route path="matches" element={<MatchesPage />} />
+              <Route path="tournament" element={<TournamentPage />} />
               <Route path="courts" element={<CourtsPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="settings" element={<SettingsPage />} />
