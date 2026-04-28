@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api/api";
+import AdminUsersPanel from "../components/AdminUsersPanel";
 
 const getTomorrowDateValue = () => {
   const date = new Date();
@@ -692,6 +693,12 @@ const AdminPage = () => {
         >
           Tournament
         </button>
+        <button
+          className={activeTab === "users" ? "admin-tab-active" : ""}
+          onClick={() => setActiveTab("users")}
+        >
+          Users
+        </button>
       </div>
 
       {activeTab === "overview" && (
@@ -748,6 +755,15 @@ const AdminPage = () => {
             <span>06</span>
             <h3>Manage tournament</h3>
             <p>Create tournament matches, update results and manage schedule.</p>
+          </button>
+
+          <button
+            className="admin-action-card"
+            onClick={() => setActiveTab("users")}
+          >
+            <span>07</span>
+            <h3>Manage users</h3>
+            <p>View users, update roles and monitor no-show behavior.</p>
           </button>
         </div>
       )}
@@ -1471,6 +1487,8 @@ const AdminPage = () => {
           </div>
         </div>
       )}
+
+      {activeTab === "users" && <AdminUsersPanel />}
     </section>
   );
 };
